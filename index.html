@@ -279,6 +279,8 @@ const ROUNDS  = 5;
 /* ── 狀態 ── */
 let scene, camera, renderer, xrSession, refSpace, hitTestSrc;
 let reticle, ball3d, ballPlaced = false;
+let lastHitMatrix = null;   // 儲存最新 hit test 矩陣，供 select 事件使用
+let xrController = null;
 let breathRunning = false, roundDone = 0, phaseIdx = 0;
 let secLeft = 0, ticker = null, animRAF = null;
 let phaseStart = 0, phaseDur = 0;
@@ -423,8 +425,11 @@ function initThree() {
   // ── 3D 呼吸球 ──
   createBall();
 
-  // ── tap 放置 ──
-  renderer.domElement.addEventListener('click', onTap);
+  // ── AR 點擊放置：使用 XR controller select 事件 ──
+  // （WebXR AR session 中 canvas click 不會觸發，必須用 controller select）
+  xrController = renderer.xr.getController(0);
+  xrController.addEventListener('select', onXRSelect);
+  scene.add(xrController);
 
   window.addEventListener('resize', ()=>{
     camera.aspect = window.innerWidth/window.innerHeight;
@@ -500,26 +505,26 @@ function createBall() {
   ball3d = group;
 }
 
-/* ── 點擊放置 ── */
-function onTap() {
-  if (!reticle.visible || breathRunning) return;
-  if (!ballPlaced) placeBall();
+/* ── XR Controller select（手機點擊 AR 畫面） ── */
+function onXRSelect() {
+  if (breathRunning) return;
+  if (!ballPlaced && lastHitMatrix) placeBall();
 }
 
 function placeBall() {
-  if (!reticle.visible) return;
+  if (!lastHitMatrix) return;
   const pos = new THREE.Vector3();
   const quat = new THREE.Quaternion();
-  reticle.matrix.decompose(pos, quat, new THREE.Vector3());
+  const mat  = new THREE.Matrix4().fromArray(lastHitMatrix);
+  mat.decompose(pos, quat, new THREE.Vector3());
   ball3d.position.copy(pos);
-  ball3d.position.y += 0.085; // 讓球心在平面上方
+  ball3d.position.y += 0.085;
   ball3d.visible = true;
   ball3d.scale.setScalar(0);
   ballPlaced = true;
   ballCurrentScale = 0;
   ballTargetScale  = 1;
 
-  // 動畫入場
   animateScale(0, 1, 600);
 
   scanHint.classList.add('hidden');
@@ -555,9 +560,11 @@ function onXRFrame(time, frame) {
       const hitPose = hits[0].getPose(refSpace);
       reticle.visible = true;
       reticle.matrix.fromArray(hitPose.transform.matrix);
-      hudStatus.textContent = '偵測到平面，點擊放置';
+      lastHitMatrix = hitPose.transform.matrix; // 儲存最新位置
+      hudStatus.textContent = '偵測到平面，點擊畫面放置';
     } else {
       reticle.visible = false;
+      lastHitMatrix = null;
       hudStatus.textContent = '掃描平面中…';
     }
   }
@@ -702,8 +709,8 @@ function onSessionEnd() {
   renderer&&renderer.domElement&&renderer.domElement.remove();
   hud.classList.remove('active'); hud.style.display='none';
   document.getElementById('splash').classList.remove('hide');
-  ballPlaced=false;
-  xrSession=null; hitTestSrc=null;
+  ballPlaced=false; lastHitMatrix=null;
+  xrSession=null; hitTestSrc=null; xrController=null;
 }
 
 /* ── 瀏覽器相容提示 ── */
