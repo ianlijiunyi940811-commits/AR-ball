@@ -215,7 +215,7 @@ const VS={
 
 /* 狀態 */
 let scene,camera,renderer;
-let xrSession=null,refSpace=null,hitSrc=null,xrCtrl=null;
+let xrSession=null,refSpace=null,hitSrc=null,hitSrcRequested=false,xrCtrl=null;
 let reticle=null,ball=null;
 let placed=false,lastPose=null;
 let curS=1,tgtS=1;
@@ -295,11 +295,10 @@ async function startAR(){
   xrSession.addEventListener('end',onEnd);
 
   refSpace=await xrSession.requestReferenceSpace('local');
-  const vs=await xrSession.requestReferenceSpace('viewer');
-  /* 第一版可運作的設定：讓 ARCore 依手機朝向自動決定射線方向，不指定 offsetRay */
-  hitSrc=await xrSession.requestHitTestSource({space:vs});
+  /* hitTestSource 改在每幀的 frame() 裡面延遲初始化（Three.js 官方範例做法）
+     避免 session 建立時序問題導致 hit test 靜默失敗 */
 
-  /* controller select = 手機點擊 AR 畫面的空白區域 */
+  /* XR controller select = 手機點擊 AR 畫面的空白區域 */
   xrCtrl=renderer.xr.getController(0);
   xrCtrl.addEventListener('select',onSel);
   scene.add(xrCtrl);
@@ -449,6 +448,20 @@ function resetBall(){
 function frame(t,xrf){
   if(!xrf)return;
 
+  /* ── hit test source 延遲初始化（官方 Three.js 範例做法）──
+     在 session 內的第一幀才申請，確保時序正確             */
+  if(!hitSrcRequested){
+    hitSrcRequested=true;
+    xrSession.requestReferenceSpace('viewer').then(vs=>{
+      xrSession.requestHitTestSource({space:vs}).then(src=>{
+        hitSrc=src;
+      }).catch(e=>console.warn('hitTestSource 失敗:',e));
+    });
+    xrSession.addEventListener('end',()=>{
+      hitSrcRequested=false; hitSrc=null;
+    });
+  }
+
   if(hitSrc&&!placed){
     const hits=xrf.getHitTestResults(hitSrc);
     if(hits.length){
@@ -546,7 +559,8 @@ function onEnd(){
   renderer&&(renderer.setAnimationLoop(null),renderer.domElement?.remove());
   hud.classList.remove('on');
   $('splash').classList.remove('hide');
-  placed=false;lastPose=null;xrSession=null;hitSrc=null;xrCtrl=null;
+  placed=false;lastPose=null;hitSrc=null;hitSrcRequested=false;
+  xrSession=null;xrCtrl=null;
 }
 
 /* 啟動檢查 */
