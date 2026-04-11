@@ -5,151 +5,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>AR 呼吸球</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-:root {
-  --teal-bright:#17C9AF; --teal-mid:#12A08C; --teal-deep:#0D7A6B;
-  --teal-pale:#A8F5EA;   --teal-border:#0F4A42; --teal-bg:#071F1C;
-  --teal-surface:#0B2E29; --text-pri:#D4F5EF; --text-sec:#7ED8CB; --text-muted:#3D8F83;
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --tb:#17C9AF;--tm:#12A08C;--td:#0D7A6B;
+  --tp:#A8F5EA;--tbg:#071F1C;--ts:#0B2E29;
+  --t1:#D4F5EF;--t2:#7ED8CB;--t3:#3D8F83;
 }
-html, body { width:100%; height:100%; overflow:hidden; background:#000;
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  color:var(--text-pri); user-select:none; -webkit-tap-highlight-color:transparent; }
+  color:var(--t1);-webkit-tap-highlight-color:transparent;user-select:none;}
 
-/* ── 啟動畫面 ── */
-#splash {
-  position:fixed; inset:0; background:var(--teal-bg);
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:20px; z-index:200; transition:opacity 0.5s ease;
-}
-#splash.hide { opacity:0; pointer-events:none; }
-.splash-ball {
-  width:100px; height:100px; border-radius:50%;
+/* 啟動畫面 */
+#splash{position:fixed;inset:0;background:var(--tbg);z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+  transition:opacity .5s ease;}
+#splash.hide{opacity:0;pointer-events:none;}
+.s-ball{width:100px;height:100px;border-radius:50%;
   background:radial-gradient(circle at 35% 32%,#A8F5EA 0%,#5DE5CE 22%,#12A08C 55%,#0D7A6B 85%,#064038 100%);
   box-shadow:0 0 40px rgba(23,201,175,.5),0 0 80px rgba(23,201,175,.2);
-  animation:pulse 2.4s ease-in-out infinite;
-}
-@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
-.splash-title { font-size:22px; font-weight:700; color:var(--teal-bright); }
-.splash-desc  { font-size:14px; color:var(--text-muted); text-align:center; line-height:1.7; max-width:260px; }
-#start-ar-btn {
-  padding:14px 40px; border-radius:30px;
-  border:1.5px solid var(--teal-mid); background:var(--teal-deep); color:var(--teal-pale);
-  font-size:16px; font-weight:600; cursor:pointer;
-  box-shadow:0 0 24px rgba(18,160,140,.35);
-}
-#start-ar-btn:active { transform:scale(0.96); }
-#no-xr-msg { font-size:13px; color:#E24B4A; text-align:center; max-width:280px; line-height:1.6; display:none; }
+  animation:sp 2.4s ease-in-out infinite;}
+@keyframes sp{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.s-title{font-size:22px;font-weight:700;color:var(--tb);}
+.s-desc{font-size:14px;color:var(--t3);text-align:center;line-height:1.7;max-width:260px;}
+#go-btn{padding:14px 40px;border-radius:30px;border:1.5px solid var(--tm);
+  background:var(--td);color:var(--tp);font-size:16px;font-weight:600;cursor:pointer;
+  box-shadow:0 0 24px rgba(18,160,140,.35);}
+#go-btn:active{transform:scale(.96);}
+#err{font-size:13px;color:#E24B4A;text-align:center;max-width:280px;line-height:1.6;display:none;}
 
-/* ── AR canvas (Three.js 渲染層) ── */
-#ar-canvas {
-  position:fixed; inset:0; z-index:1;
-  touch-action:none; /* 讓 XR controller 能收到觸控 */
+/* HUD — 必須保留給 dom-overlay 使用
+   觸控穿透原則：整個 HUD pointer-events:none
+   只有按鈕區域 pointer-events:auto             */
+#hud{
+  position:fixed;inset:0;z-index:10;
+  display:none;                        /* AR 啟動後改 block */
+  pointer-events:none;                 /* 空白處觸控穿透到 XR session */
 }
+#hud.on{display:block;}
 
-/* ── HUD 層（疊在 canvas 上，pointer-events:none 讓觸控穿透到 canvas） ── */
-#hud {
-  position:fixed; inset:0; z-index:10;
-  pointer-events:none; /* 預設穿透，按鈕個別設 auto */
-  display:none;
+/* 頂部資訊列 */
+#top-bar{
+  position:absolute;top:0;left:0;right:0;
+  padding:safe-area-inset-top 20px 0;
+  padding-top:max(env(safe-area-inset-top,0px),20px);
+  display:flex;align-items:center;justify-content:space-between;
 }
-#hud.active { display:block; }
-
-.hud-top {
-  position:absolute; top:0; left:0; right:0; padding:20px 20px 0;
-  display:flex; align-items:center; justify-content:space-between;
-}
-.hud-title  { font-size:14px; font-weight:600; color:var(--teal-bright);
-  text-shadow:0 1px 6px rgba(0,0,0,.7); }
-.hud-status { font-size:12px; color:var(--text-sec);
-  text-shadow:0 1px 6px rgba(0,0,0,.7); }
-
-/* 掃描提示 */
-#scan-hint {
-  position:absolute; bottom:200px; left:50%; transform:translateX(-50%);
-  display:flex; flex-direction:column; align-items:center; gap:10px;
-  transition:opacity 0.4s ease;
-}
-#scan-hint.hidden { opacity:0; pointer-events:none; }
-.scan-ring {
-  width:64px; height:64px; border-radius:50%;
-  border:2.5px solid var(--teal-bright);
-  animation:scanpulse 1.6s ease-in-out infinite;
-}
-@keyframes scanpulse { 0%,100%{transform:scale(1);opacity:.9} 50%{transform:scale(1.2);opacity:.4} }
-.scan-text { font-size:13px; color:var(--text-sec); text-shadow:0 1px 8px rgba(0,0,0,.9); letter-spacing:.04em; }
-
-/* 底部 */
-.hud-bottom {
-  position:absolute; bottom:0; left:0; right:0;
-  padding:0 20px 36px;
-  display:flex; flex-direction:column; align-items:center; gap:12px;
-  pointer-events:none;
-}
-#breath-display { display:flex; flex-direction:column; align-items:center; gap:4px; opacity:0; transition:opacity .5s; }
-#breath-display.show { opacity:1; }
-.breath-phase {
-  font-size:30px; font-weight:700; color:var(--teal-bright);
-  text-shadow:0 0 20px rgba(23,201,175,.8),0 2px 8px rgba(0,0,0,.7);
-}
-.breath-sub { font-size:13px; color:var(--text-sec); text-shadow:0 1px 6px rgba(0,0,0,.8); }
-
-#round-dots { display:flex; gap:7px; opacity:0; transition:opacity .4s; }
-#round-dots.show { opacity:1; }
-.rdot { width:8px;height:8px;border-radius:50%;background:rgba(15,74,66,.8);transition:all .4s; box-shadow:0 1px 3px rgba(0,0,0,.5); }
-.rdot.done  { background:var(--teal-bright); }
-.rdot.active{ background:var(--teal-bright); box-shadow:0 0 10px var(--teal-bright); }
-
-.btn-row { display:flex; gap:10px; align-items:center; pointer-events:auto; }
-
-.voice-btn {
-  display:flex; align-items:center; gap:6px; padding:0 14px; height:44px;
-  border-radius:22px; border:1.5px solid rgba(15,74,66,.9);
-  background:rgba(7,31,28,.8); backdrop-filter:blur(6px);
-  cursor:pointer; transition:all .2s;
-}
-.voice-btn.on { border-color:var(--teal-mid); background:rgba(11,46,41,.88); }
-.voice-btn-icon { font-size:15px; }
-.voice-btn-label { font-size:12px; color:var(--text-muted); transition:color .2s; }
-.voice-btn.on .voice-btn-label { color:var(--teal-pale); }
-
-.action-btn {
-  height:44px; padding:0 28px; border-radius:22px;
-  border:1.5px solid var(--teal-mid); background:rgba(13,122,107,.88);
-  backdrop-filter:blur(6px); color:var(--teal-pale);
-  font-size:15px; font-weight:600; cursor:pointer;
-  box-shadow:0 0 20px rgba(18,160,140,.3);
-}
-.action-btn:active { transform:scale(0.96); }
-.action-btn.sec { background:rgba(7,31,28,.8); border-color:rgba(15,74,66,.9); color:var(--text-muted); box-shadow:none; }
-
-.tip-line { font-size:11px; color:var(--text-muted); letter-spacing:.04em; text-align:center;
-  text-shadow:0 1px 6px rgba(0,0,0,.9); }
+#top-title{font-size:14px;font-weight:600;color:var(--tb);
+  text-shadow:0 1px 8px rgba(0,0,0,.8);}
+#top-status{font-size:12px;color:var(--t2);
+  text-shadow:0 1px 8px rgba(0,0,0,.8);}
 
 /* 語音條 */
-#voice-bar {
-  position:absolute; top:72px; left:50%; transform:translateX(-50%);
-  display:flex; align-items:center; gap:8px;
-  background:rgba(11,46,41,.88); backdrop-filter:blur(8px);
-  border:.5px solid var(--teal-border); border-radius:20px; padding:5px 14px;
-  white-space:nowrap; opacity:0; transition:opacity .35s; pointer-events:none;
+#vbar{
+  position:absolute;top:68px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:8px;
+  background:rgba(11,46,41,.9);border:.5px solid #0F4A42;border-radius:20px;
+  padding:5px 14px;white-space:nowrap;
+  opacity:0;transition:opacity .35s;pointer-events:none;
 }
-#voice-bar.show { opacity:1; }
-.vw { display:flex; align-items:flex-end; gap:2px; height:12px; }
-.vw span { display:block; width:3px; border-radius:2px; background:var(--teal-bright); animation:vwa .75s ease-in-out infinite; }
+#vbar.on{opacity:1;}
+.vw{display:flex;align-items:flex-end;gap:2px;height:12px;}
+.vw span{display:block;width:3px;border-radius:2px;background:var(--tb);
+  animation:vwa .75s ease-in-out infinite;}
 .vw span:nth-child(1){height:5px;animation-delay:0s}
 .vw span:nth-child(2){height:10px;animation-delay:.15s}
 .vw span:nth-child(3){height:5px;animation-delay:.3s}
 @keyframes vwa{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.35)}}
-.vbt { font-size:12px; color:var(--text-sec); letter-spacing:.04em; }
+#vt{font-size:12px;color:var(--t2);letter-spacing:.04em;}
 
-/* 退出鈕 */
-#exit-btn {
-  position:absolute; top:16px; right:16px;
-  width:36px; height:36px; border-radius:50%;
-  background:rgba(7,31,28,.8); backdrop-filter:blur(6px);
-  border:1px solid rgba(15,74,66,.8); color:var(--text-muted);
-  font-size:18px; display:flex; align-items:center; justify-content:center;
-  cursor:pointer; pointer-events:auto;
+/* 掃描提示 */
+#scan{
+  position:absolute;bottom:210px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  transition:opacity .4s;
+}
+#scan.hide{opacity:0;pointer-events:none;}
+.s-ring{width:64px;height:64px;border-radius:50%;
+  border:2.5px solid var(--tb);
+  animation:srp 1.6s ease-in-out infinite;}
+@keyframes srp{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.2);opacity:.4}}
+#scan p{font-size:13px;color:var(--t2);text-shadow:0 1px 8px rgba(0,0,0,.9);letter-spacing:.04em;}
+
+/* 呼吸狀態 */
+#breath{
+  position:absolute;bottom:175px;left:0;right:0;
+  text-align:center;opacity:0;transition:opacity .5s;
+}
+#breath.on{opacity:1;}
+#b-phase{font-size:30px;font-weight:700;color:var(--tb);
+  text-shadow:0 0 24px rgba(23,201,175,.8),0 2px 8px rgba(0,0,0,.7);}
+#b-sub{font-size:13px;color:var(--t2);text-shadow:0 1px 6px rgba(0,0,0,.8);}
+
+/* 輪次點 */
+#dots{
+  position:absolute;bottom:150px;left:0;right:0;
+  display:flex;gap:7px;justify-content:center;
+  opacity:0;transition:opacity .4s;
+}
+#dots.on{opacity:1;}
+.rd{width:8px;height:8px;border-radius:50%;background:rgba(15,74,66,.9);transition:all .4s;}
+.rd.done{background:var(--tb);}
+.rd.cur{background:var(--tb);box-shadow:0 0 10px var(--tb);}
+
+/* 底部按鈕列 — 只有這裡 pointer-events:auto */
+#btns{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:0 20px max(env(safe-area-inset-bottom,0px),28px);
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  pointer-events:auto;        /* ← 這裡接收按鈕點擊 */
+}
+.btn-row{display:flex;gap:10px;align-items:center;}
+.vbtn{display:flex;align-items:center;gap:6px;padding:0 14px;height:44px;
+  border-radius:22px;border:1.5px solid rgba(15,74,66,.9);
+  background:rgba(7,31,28,.85);cursor:pointer;transition:all .2s;}
+.vbtn.on{border-color:var(--tm);background:rgba(11,46,41,.9);}
+.vbtn-lbl{font-size:12px;color:var(--t3);transition:color .2s;}
+.vbtn.on .vbtn-lbl{color:var(--tp);}
+.abtn{height:44px;padding:0 28px;border-radius:22px;
+  border:1.5px solid var(--tm);background:rgba(13,122,107,.9);
+  color:var(--tp);font-size:15px;font-weight:600;cursor:pointer;
+  box-shadow:0 0 20px rgba(18,160,140,.3);}
+.abtn:active{transform:scale(.96);}
+.abtn.sec{background:rgba(7,31,28,.85);border-color:rgba(15,74,66,.9);color:var(--t3);box-shadow:none;}
+.tip{font-size:11px;color:var(--t3);letter-spacing:.04em;text-align:center;
+  text-shadow:0 1px 6px rgba(0,0,0,.9);}
+
+/* 退出鈕 — pointer-events:auto 個別設定 */
+#x-btn{
+  position:absolute;top:max(env(safe-area-inset-top,0px),16px);right:16px;
+  width:36px;height:36px;border-radius:50%;
+  background:rgba(7,31,28,.85);border:1px solid rgba(15,74,66,.8);
+  color:var(--t3);font-size:18px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;pointer-events:auto;    /* ← 個別允許點擊 */
 }
 </style>
 </head>
@@ -157,457 +144,382 @@ html, body { width:100%; height:100%; overflow:hidden; background:#000;
 
 <!-- 啟動畫面 -->
 <div id="splash">
-  <div class="splash-ball"></div>
-  <div class="splash-title">AR 呼吸球</div>
-  <div class="splash-desc">開啟相機，掃描桌面或地板，<br>點擊螢幕放置呼吸球</div>
-  <button id="start-ar-btn" onclick="startAR()">開啟相機 AR</button>
-  <div id="no-xr-msg"></div>
+  <div class="s-ball"></div>
+  <div class="s-title">AR 呼吸球</div>
+  <div class="s-desc">開啟相機，掃描桌面或地板，<br>點擊螢幕放置呼吸球</div>
+  <button id="go-btn" onclick="startAR()">開啟相機 AR</button>
+  <div id="err"></div>
 </div>
 
-<!-- HUD（pointer-events:none，觸控穿透到 canvas） -->
+<!-- HUD（dom-overlay 根節點）-->
 <div id="hud">
-  <div class="hud-top">
-    <span class="hud-title">ADHD 同調呼吸</span>
-    <span class="hud-status" id="hud-status">掃描平面中…</span>
+
+  <div id="top-bar">
+    <span id="top-title">ADHD 同調呼吸</span>
+    <span id="top-status">掃描平面中…</span>
   </div>
 
-  <div id="voice-bar">
+  <div id="vbar">
     <div class="vw"><span></span><span></span><span></span></div>
-    <span class="vbt" id="vbt"></span>
+    <span id="vt"></span>
   </div>
 
-  <div id="scan-hint">
-    <div class="scan-ring"></div>
-    <div class="scan-text">慢慢移動手機，偵測桌面或地板</div>
+  <div id="scan">
+    <div class="s-ring"></div>
+    <p>慢慢移動手機，偵測桌面或地板</p>
   </div>
 
-  <div class="hud-bottom">
-    <div id="breath-display">
-      <div class="breath-phase" id="phase-text">—</div>
-      <div class="breath-sub"  id="phase-sub"></div>
-    </div>
-    <div id="round-dots"></div>
+  <div id="breath">
+    <div id="b-phase">—</div>
+    <div id="b-sub"></div>
+  </div>
+
+  <div id="dots"></div>
+
+  <div id="btns">
     <div class="btn-row">
-      <button class="voice-btn on" id="voice-btn" onclick="toggleVoice()">
-        <span class="voice-btn-icon" id="v-icon">🔊</span>
-        <span class="voice-btn-label" id="v-label">語音開</span>
+      <button class="vbtn on" id="vbtn" onclick="toggleVoice()">
+        <span id="vi" style="font-size:15px">🔊</span>
+        <span class="vbtn-lbl" id="vl">語音開</span>
       </button>
-      <button class="action-btn" id="main-btn" onclick="mainAction()" style="display:none">開始呼吸</button>
-      <button class="action-btn sec" id="reset-btn" onclick="resetBall()" style="display:none">重新放置</button>
+      <button class="abtn" id="mbtn" onclick="mainAction()" style="display:none">開始呼吸</button>
+      <button class="abtn sec" id="rbtn" onclick="resetBall()" style="display:none">重新放置</button>
     </div>
-    <div class="tip-line">同調呼吸 — 吸氣 5 秒 · 吐氣 6 秒，共 5 輪</div>
+    <div class="tip">同調呼吸 — 吸氣 5 秒 · 吐氣 6 秒，共 5 輪</div>
   </div>
 
-  <button id="exit-btn" onclick="exitAR()">✕</button>
+  <button id="x-btn" onclick="exitAR()">✕</button>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-/* ════════════════════════════════════════
-   AR 呼吸球 — WebXR Hit Test + Three.js
-   修正：HUD pointer-events:none 讓觸控穿透
-         controller select 正確接收點擊
-         球體改用輕量 MeshStandardMaterial
-   ════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════
+   AR 呼吸球 v4
+   關鍵架構：
+   1. dom-overlay 必須保留（immersive-ar 中唯一能顯示 DOM 的方式）
+   2. HUD 根節點 pointer-events:none，空白處觸控穿透
+   3. 按鈕列和退出鈕個別 pointer-events:auto
+   4. 放置用 XR controller select 事件（非 canvas click）
+   5. 球體用 MeshStandardMaterial（比 Physical 快）
+   ══════════════════════════════════════════════════ */
 
-/* ── 呼吸參數 ── */
-const PHASES = [{n:'吸氣',t:5},{n:'吐氣',t:6}];
-const ROUNDS  = 5;
-const VOICE_SCRIPT = {
-  intro:   ['歡迎開始同調呼吸練習。','請保持手機穩定，跟著球的節奏呼吸。'],
-  phase:   { '吸氣':'吸氣', '吐氣':'吐氣' },
-  between: [null,'很好，繼續保持。','讓呼吸更自然。','感受氣息流動。','最後一輪。'],
-  finish:  '練習完成，帶著這份平靜繼續你的一天。'
+const PHASES=[{n:'吸氣',t:5},{n:'吐氣',t:6}];
+const ROUNDS=5;
+const VS={
+  intro:['歡迎開始同調呼吸練習。','跟著球的節奏，吸氣五秒，吐氣六秒。'],
+  ph:{'吸氣':'吸氣','吐氣':'吐氣'},
+  mid:[null,'很好，繼續保持。','讓呼吸更自然。','感受氣息流動。','最後一輪。'],
+  end:'練習完成，帶著這份平靜繼續你的一天。'
 };
 
-/* ── 全域狀態 ── */
-let scene, camera, renderer, clock;
-let xrSession = null, refSpace = null, hitTestSrc = null;
-let xrController = null;
-let reticle = null, ball3d = null;
-let ballPlaced = false, lastHitPose = null;
-let ballCurrentScale = 1, ballTargetScale = 1;
-let breathRunning = false, roundDone = 0, phaseIdx = 0;
-let secLeft = 0, ticker = null;
-let phaseStart = 0, phaseDur = 0;
-let voiceOn = true, preferredVoice = null;
+/* 狀態 */
+let scene,camera,renderer;
+let xrSession=null,refSpace=null,hitSrc=null,xrCtrl=null;
+let reticle=null,ball=null;
+let placed=false,lastPose=null;
+let curS=1,tgtS=1;
+let running=false,rdone=0,pidx=0,sleft=0,tk=null;
+let voiceOn=true,pvox=null;
 
-/* ── DOM ── */
-const hud        = document.getElementById('hud');
-const scanHint   = document.getElementById('scan-hint');
-const phaseText  = document.getElementById('phase-text');
-const phaseSub   = document.getElementById('phase-sub');
-const hudStatus  = document.getElementById('hud-status');
-const mainBtn    = document.getElementById('main-btn');
-const resetBtn   = document.getElementById('reset-btn');
-const breathDisp = document.getElementById('breath-display');
-const roundDots  = document.getElementById('round-dots');
-const voiceBar   = document.getElementById('voice-bar');
-const vbt        = document.getElementById('vbt');
+/* DOM */
+const $ = id => document.getElementById(id);
+const hud=$('hud'),scan=$('scan'),status=$('top-status');
+const bphase=$('b-phase'),bsub=$('b-sub'),bdsp=$('breath'),dotsEl=$('dots');
+const mbtn=$('mbtn'),rbtn=$('rbtn');
+const vbar=$('vbar'),vt=$('vt');
+const synth=window.speechSynthesis;
 
-/* ── 語音 ── */
-const synth = window.speechSynthesis;
-(function(){
-  if(!synth) return;
-  function pick(){
-    const vs = synth.getVoices();
-    preferredVoice =
-      vs.find(v=>v.lang==='zh-TW'&&v.name.includes('Meijia'))||
-      vs.find(v=>v.lang==='zh-TW'&&v.name.includes('Ting'))  ||
-      vs.find(v=>v.lang==='zh-TW') ||
-      vs.find(v=>v.lang.startsWith('zh')) || null;
-  }
-  synth.getVoices().length ? pick() : synth.addEventListener('voiceschanged',pick,{once:true});
+/* 語音初始化 */
+(()=>{
+  if(!synth)return;
+  const pick=()=>{
+    const vs=synth.getVoices();
+    pvox=vs.find(v=>v.lang==='zh-TW'&&v.name.includes('Meijia'))
+        ||vs.find(v=>v.lang==='zh-TW'&&v.name.includes('Ting'))
+        ||vs.find(v=>v.lang==='zh-TW')
+        ||vs.find(v=>v.lang.startsWith('zh'))||null;
+  };
+  synth.getVoices().length?pick():synth.addEventListener('voiceschanged',pick,{once:true});
 })();
 
-let barTimer = null;
-function speak(text, cb){
-  if(!voiceOn||!synth||!text){ cb&&setTimeout(cb,0); return; }
+let bTimer=null;
+function speak(txt,cb){
+  if(!voiceOn||!synth||!txt){cb&&setTimeout(cb,0);return;}
   synth.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang='zh-TW'; if(preferredVoice) u.voice=preferredVoice;
-  u.rate=0.80; u.volume=1.0;
-  vbt.textContent=text; voiceBar.classList.add('show');
-  clearTimeout(barTimer);
-  const done=()=>{ voiceBar.classList.remove('show'); cb&&cb(); };
-  u.onend=done; u.onerror=done;
-  barTimer=setTimeout(()=>voiceBar.classList.remove('show'), text.length*200+1500);
+  const u=new SpeechSynthesisUtterance(txt);
+  u.lang='zh-TW';if(pvox)u.voice=pvox;u.rate=.80;u.volume=1;
+  vt.textContent=txt;vbar.classList.add('on');
+  clearTimeout(bTimer);
+  const done=()=>{vbar.classList.remove('on');cb&&cb();};
+  u.onend=done;u.onerror=done;
+  bTimer=setTimeout(()=>vbar.classList.remove('on'),txt.length*200+1500);
   synth.speak(u);
 }
-function speakSeq(lines,cb){
-  if(!lines||!lines.length){ cb&&cb(); return; }
-  const [h,...t]=lines;
-  if(!h){ speakSeq(t,cb); return; }
-  speak(h,()=>t.length?setTimeout(()=>speakSeq(t,cb),350):cb&&cb());
+function seq(lines,cb){
+  if(!lines||!lines.length){cb&&cb();return;}
+  const[h,...t]=lines;
+  if(!h){seq(t,cb);return;}
+  speak(h,()=>t.length?setTimeout(()=>seq(t,cb),350):cb&&cb());
 }
 function toggleVoice(){
   voiceOn=!voiceOn;
-  document.getElementById('voice-btn').classList.toggle('on',voiceOn);
-  document.getElementById('v-icon').textContent=voiceOn?'🔊':'🔇';
-  document.getElementById('v-label').textContent=voiceOn?'語音開':'語音關';
-  if(!voiceOn){ synth&&synth.cancel(); voiceBar.classList.remove('show'); }
+  $('vbtn').classList.toggle('on',voiceOn);
+  $('vi').textContent=voiceOn?'🔊':'🔇';
+  $('vl').textContent=voiceOn?'語音開':'語音關';
+  if(!voiceOn){synth&&synth.cancel();vbar.classList.remove('on');}
 }
 
-/* ══ WebXR 啟動 ══ */
+/* ══ startAR ══ */
 async function startAR(){
-  if(!navigator.xr){ showNoXR('瀏覽器不支援 WebXR，請使用 Android Chrome。'); return; }
-  const ok = await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
-  if(!ok){ showNoXR('裝置不支援 WebXR AR，請確認使用 Android Chrome 並開啟相機權限。'); return; }
+  if(!navigator.xr){err('請使用 Android Chrome 開啟');return;}
+  const ok=await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
+  if(!ok){err('裝置不支援 WebXR AR');return;}
 
   initThree();
 
-  try {
-    /* 關鍵：不加 dom-overlay，避免 HUD 層攔截觸控 */
-    xrSession = await navigator.xr.requestSession('immersive-ar',{
-      requiredFeatures: ['hit-test'],
-      optionalFeatures: ['light-estimation']
+  try{
+    xrSession=await navigator.xr.requestSession('immersive-ar',{
+      requiredFeatures:['hit-test'],
+      /* dom-overlay 必須保留，否則 HUD 在 immersive 模式下不可見 */
+      optionalFeatures:['dom-overlay','light-estimation'],
+      domOverlay:{root:hud}
     });
-  } catch(e){ showNoXR('AR 啟動失敗：'+e.message); return; }
+  }catch(e){err('AR 啟動失敗：'+e.message);return;}
 
-  document.getElementById('splash').classList.add('hide');
-  hud.classList.add('active');
+  $('splash').classList.add('hide');
+  hud.classList.add('on');
 
   renderer.xr.setReferenceSpaceType('local');
   await renderer.xr.setSession(xrSession);
-  xrSession.addEventListener('end', onSessionEnd);
+  xrSession.addEventListener('end',onEnd);
 
-  /* 先取得 referenceSpace，再申請 hitTestSource */
-  refSpace = await xrSession.requestReferenceSpace('local');
-  const viewerSpace = await xrSession.requestReferenceSpace('viewer');
-  hitTestSrc = await xrSession.requestHitTestSource({ space: viewerSpace });
+  refSpace=await xrSession.requestReferenceSpace('local');
+  const vs=await xrSession.requestReferenceSpace('viewer');
+  hitSrc=await xrSession.requestHitTestSource({space:vs});
 
-  /* XR controller select — 手機點擊畫面時觸發 */
-  xrController = renderer.xr.getController(0);
-  xrController.addEventListener('select', onSelect);
-  scene.add(xrController);
+  /* controller select = 手機點擊 AR 畫面的空白區域 */
+  xrCtrl=renderer.xr.getController(0);
+  xrCtrl.addEventListener('select',onSel);
+  scene.add(xrCtrl);
 
-  clock = new THREE.Clock();
-  renderer.setAnimationLoop(onXRFrame);
+  renderer.setAnimationLoop(frame);
 }
 
-function showNoXR(msg){
-  document.getElementById('no-xr-msg').textContent=msg;
-  document.getElementById('no-xr-msg').style.display='block';
-  document.getElementById('start-ar-btn').style.display='none';
+function err(msg){
+  $('err').textContent=msg;$('err').style.display='block';
+  $('go-btn').style.display='none';
 }
 
-/* ══ Three.js 初始化 ══ */
+/* ══ Three.js ══ */
 function initThree(){
-  scene = new THREE.Scene();
+  scene=new THREE.Scene();
+  scene.add(new THREE.AmbientLight(0xffffff,1.1));
+  const d=new THREE.DirectionalLight(0xffffff,1.4);d.position.set(2,6,3);scene.add(d);
+  const f=new THREE.DirectionalLight(0x88FFEE,.5);f.position.set(-3,2,-2);scene.add(f);
 
-  /* 光源 */
-  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-  const dir = new THREE.DirectionalLight(0xffffff, 1.5);
-  dir.position.set(2,6,3); scene.add(dir);
-  const fill = new THREE.DirectionalLight(0x88FFEE, 0.5);
-  fill.position.set(-3,2,-2); scene.add(fill);
+  camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.01,20);
 
-  camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 20);
-
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); /* 限制解析度提升速度 */
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.xr.enabled = true;
-  /* 不用 ACESFilmic（耗效能），用 Linear 即可 */
-  renderer.outputEncoding = THREE.sRGBEncoding;
-
-  /* canvas 放在 z-index:1，HUD 在 z-index:10 */
-  renderer.domElement.id = 'ar-canvas';
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.xr.enabled=true;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  /* canvas z-index 低於 HUD */
+  renderer.domElement.style.cssText='position:fixed;top:0;left:0;z-index:1;';
   document.body.appendChild(renderer.domElement);
 
-  /* reticle — 瞄準環 */
-  const rGeo = new THREE.RingGeometry(0.05, 0.08, 32);
-  rGeo.rotateX(-Math.PI/2);
-  reticle = new THREE.Mesh(rGeo, new THREE.MeshBasicMaterial({
-    color:0x17C9AF, side:THREE.DoubleSide, transparent:true, opacity:0.8
-  }));
-  reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
+  /* reticle */
+  const rg=new THREE.RingGeometry(.05,.08,32);
+  rg.rotateX(-Math.PI/2);
+  reticle=new THREE.Mesh(rg,new THREE.MeshBasicMaterial(
+    {color:0x17C9AF,side:THREE.DoubleSide,transparent:true,opacity:.85}));
+  reticle.matrixAutoUpdate=false;
+  reticle.visible=false;
   scene.add(reticle);
 
-  createBall();
+  makeBall();
 
   window.addEventListener('resize',()=>{
-    camera.aspect = innerWidth/innerHeight;
+    camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth,innerHeight);
   });
 }
 
-/* ══ 3D 球體（輕量材質，避免卡頓）══ */
-function createBall(){
-  if(ball3d){ scene.remove(ball3d); ball3d=null; }
-  const g = new THREE.Group();
+function makeBall(){
+  if(ball){scene.remove(ball);ball=null;}
+  const g=new THREE.Group();
 
-  /* 外球：MeshStandardMaterial（比 MeshPhysicalMaterial 快很多）*/
-  const outerMat = new THREE.MeshStandardMaterial({
-    color:      0x12A08C,
-    emissive:   0x0A4A3C,
-    emissiveIntensity: 0.4,
-    metalness:  0.15,
-    roughness:  0.12,
-    transparent:true,
-    opacity:    0.88,
-  });
-  const outer = new THREE.Mesh(new THREE.SphereGeometry(0.10, 48, 48), outerMat);
-  outer.name = 'outer'; g.add(outer);
+  /* 外球 */
+  const om=new THREE.MeshStandardMaterial({
+    color:0x12A08C,emissive:0x0A4A3C,emissiveIntensity:.4,
+    metalness:.15,roughness:.12,transparent:true,opacity:.90});
+  const ob=new THREE.Mesh(new THREE.SphereGeometry(.10,48,48),om);
+  ob.name='outer';g.add(ob);
 
-  /* 內核：發光核心 */
-  const coreMat = new THREE.MeshStandardMaterial({
-    color:    0x5DE5CE,
-    emissive: 0x17C9AF,
-    emissiveIntensity: 1.0,
-    transparent:true, opacity:0.5,
-    roughness:0, metalness:0,
-  });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.055,32,32), coreMat);
-  core.name='core'; g.add(core);
+  /* 內核 */
+  const cm=new THREE.MeshStandardMaterial({
+    color:0x5DE5CE,emissive:0x17C9AF,emissiveIntensity:1.0,
+    transparent:true,opacity:.5,roughness:0,metalness:0});
+  const cb=new THREE.Mesh(new THREE.SphereGeometry(.055,32,32),cm);
+  cb.name='core';g.add(cb);
 
-  /* 高光點 */
-  const spec = new THREE.Mesh(
-    new THREE.SphereGeometry(0.025,12,12),
-    new THREE.MeshBasicMaterial({color:0xD4F5EF, transparent:true, opacity:0.6})
-  );
-  spec.position.set(-0.034, 0.054, 0.074); g.add(spec);
+  /* 高光 */
+  const sp=new THREE.Mesh(new THREE.SphereGeometry(.025,12,12),
+    new THREE.MeshBasicMaterial({color:0xD4F5EF,transparent:true,opacity:.6}));
+  sp.position.set(-.034,.054,.074);g.add(sp);
 
-  /* 光暈（BackSide 外殼）*/
-  g.add(new THREE.Mesh(
-    new THREE.SphereGeometry(0.115,16,16),
-    new THREE.MeshBasicMaterial({color:0x17C9AF, transparent:true, opacity:0.06, side:THREE.BackSide})
-  ));
+  /* 光暈外殼 */
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(.118,16,16),
+    new THREE.MeshBasicMaterial({color:0x17C9AF,transparent:true,opacity:.06,side:THREE.BackSide})));
 
-  /* 地面陰影環 */
-  const shadowGeo = new THREE.CircleGeometry(0.10,32);
-  shadowGeo.rotateX(-Math.PI/2);
-  const shadow = new THREE.Mesh(shadowGeo,
-    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.20}));
-  shadow.position.y = -0.101; g.add(shadow);
+  /* 地面陰影 */
+  const sg=new THREE.CircleGeometry(.10,32);sg.rotateX(-Math.PI/2);
+  const sh=new THREE.Mesh(sg,new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.20}));
+  sh.position.y=-.101;g.add(sh);
 
-  g.visible = false;
-  scene.add(g);
-  ball3d = g;
+  g.visible=false;scene.add(g);ball=g;
 }
 
-/* ══ XR Controller Select（手機點擊）══ */
-function onSelect(){
-  /* 放置球：有 lastHitPose 且尚未放置 */
-  if(!ballPlaced && lastHitPose){
-    placeBall();
-    return;
-  }
-  /* 已放置但還沒開始：不做事，讓使用者按 HUD 按鈕 */
+/* ══ XR select 事件（空白處點擊）══ */
+function onSel(){
+  if(!placed&&lastPose) place();
 }
 
-/* ══ 放置球體 ══ */
-function placeBall(){
-  const pos = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  new THREE.Matrix4().fromArray(lastHitPose.transform.matrix)
-    .decompose(pos, quat, new THREE.Vector3());
-
-  ball3d.position.copy(pos);
-  ball3d.position.y += 0.10;   /* 球心浮在平面上方 */
-  ball3d.visible = true;
-  ballPlaced = true;
-  ballCurrentScale = 0;
-  ballTargetScale  = 1;
-  ball3d.scale.setScalar(0);
-
-  scanHint.classList.add('hidden');
-  mainBtn.style.display  = 'block';
-  resetBtn.style.display = 'block';
-  hudStatus.textContent  = '點擊「開始呼吸」';
+function place(){
+  const p=new THREE.Vector3(),q=new THREE.Quaternion();
+  new THREE.Matrix4().fromArray(lastPose.transform.matrix).decompose(p,q,new THREE.Vector3());
+  ball.position.copy(p);
+  ball.position.y+=.10;
+  ball.visible=true;placed=true;
+  curS=0;tgtS=1;ball.scale.setScalar(0);
+  scan.classList.add('hide');
+  mbtn.style.display=rbtn.style.display='block';
+  status.textContent='點擊「開始呼吸」';
   buildDots();
 }
 
 function resetBall(){
-  if(breathRunning) stopBreath();
-  ballPlaced=false; lastHitPose=null;
-  ball3d.visible=false;
-  mainBtn.style.display=resetBtn.style.display='none';
-  breathDisp.classList.remove('show');
-  roundDots.classList.remove('show');
-  scanHint.classList.remove('hidden');
-  hudStatus.textContent='掃描平面中…';
-  phaseText.textContent='—'; phaseSub.textContent='';
-  ballTargetScale=1;
+  if(running)stopBreath();
+  placed=false;lastPose=null;ball.visible=false;
+  mbtn.style.display=rbtn.style.display='none';
+  bdsp.classList.remove('on');dotsEl.classList.remove('on');
+  scan.classList.remove('hide');
+  status.textContent='掃描平面中…';
+  bphase.textContent='—';bsub.textContent='';tgtS=1;
 }
 
 /* ══ XR 每幀 ══ */
-function onXRFrame(time, frame){
-  if(!frame) return;
+function frame(t,xrf){
+  if(!xrf)return;
 
-  /* Hit test — 每幀更新瞄準環位置 */
-  if(hitTestSrc && !ballPlaced){
-    const hits = frame.getHitTestResults(hitTestSrc);
-    if(hits.length > 0){
-      lastHitPose = hits[0].getPose(refSpace);
-      reticle.visible = true;
-      reticle.matrix.fromArray(lastHitPose.transform.matrix);
-      hudStatus.textContent = '偵測到平面，點擊畫面放置';
-    } else {
-      reticle.visible = false;
-      lastHitPose = null;
-      hudStatus.textContent = '掃描平面中…';
+  if(hitSrc&&!placed){
+    const hits=xrf.getHitTestResults(hitSrc);
+    if(hits.length){
+      lastPose=hits[0].getPose(refSpace);
+      reticle.visible=true;
+      reticle.matrix.fromArray(lastPose.transform.matrix);
+      status.textContent='偵測到平面，點擊放置';
+    }else{
+      reticle.visible=false;lastPose=null;
+      status.textContent='掃描平面中…';
     }
   }
 
-  /* 球體縮放平滑插值 */
-  if(ball3d && ball3d.visible){
-    const spd = breathRunning ? 0.018 : 0.08;
-    ballCurrentScale += (ballTargetScale - ballCurrentScale) * spd;
-    ball3d.scale.setScalar(ballCurrentScale);
-
-    /* 核心呼光 */
-    const core = ball3d.getObjectByName('core');
-    if(core) core.material.emissiveIntensity = 0.7 + 0.4*Math.sin(Date.now()*.001*1.2);
-
-    ball3d.rotation.y += 0.003;
+  if(ball&&ball.visible){
+    const spd=running?.018:.09;
+    curS+=(tgtS-curS)*spd;
+    ball.scale.setScalar(curS);
+    const core=ball.getObjectByName('core');
+    if(core)core.material.emissiveIntensity=.7+.4*Math.sin(t*.001*1.2);
+    ball.rotation.y+=.003;
   }
 
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 
-/* ══ 呼吸邏輯 ══ */
+/* ══ 呼吸 ══ */
 function buildDots(){
-  roundDots.innerHTML='';
+  dotsEl.innerHTML='';
   for(let i=0;i<ROUNDS;i++){
     const d=document.createElement('div');
-    d.className='rdot'; d.id='rd'+i; roundDots.appendChild(d);
+    d.className='rd';d.id='rd'+i;dotsEl.appendChild(d);
   }
 }
-function updateDots(){
+function updDots(){
   for(let i=0;i<ROUNDS;i++){
-    const d=document.getElementById('rd'+i); if(!d)continue;
-    d.className='rdot'+(i<roundDone?' done':i===roundDone?' active':'');
+    const d=$('rd'+i);if(!d)continue;
+    d.className='rd'+(i<rdone?' done':i===rdone?' cur':'');
   }
 }
 
-function mainAction(){ breathRunning?stopBreath():startBreath(); }
+function mainAction(){running?stopBreath():startBreath();}
 
 function startBreath(){
-  breathRunning=true; roundDone=0; phaseIdx=0;
-  mainBtn.textContent='停止'; resetBtn.style.display='none';
-  breathDisp.classList.add('show'); roundDots.classList.add('show');
-  updateDots();
-  speakSeq(VOICE_SCRIPT.intro, ()=>{ if(breathRunning) nextPhase(); });
+  running=true;rdone=0;pidx=0;
+  mbtn.textContent='停止';rbtn.style.display='none';
+  bdsp.classList.add('on');dotsEl.classList.add('on');updDots();
+  seq(VS.intro,()=>{if(running)nxt();});
 }
-
 function stopBreath(){
-  breathRunning=false;
-  synth&&synth.cancel(); voiceBar.classList.remove('show');
-  clearInterval(ticker);
-  mainBtn.textContent='開始呼吸'; resetBtn.style.display='block';
-  phaseText.textContent='已暫停'; phaseSub.textContent='按開始繼續';
-  hudStatus.textContent='已暫停'; ballTargetScale=1;
+  running=false;synth&&synth.cancel();vbar.classList.remove('on');clearInterval(tk);
+  mbtn.textContent='開始呼吸';rbtn.style.display='block';
+  bphase.textContent='已暫停';bsub.textContent='按開始繼續';
+  status.textContent='已暫停';tgtS=1;
 }
-
-function nextPhase(){
-  if(!breathRunning)return;
-  if(phaseIdx>=PHASES.length){
-    phaseIdx=0; roundDone++; updateDots();
-    if(roundDone>=ROUNDS){ finishBreath(); return; }
-    const msg=VOICE_SCRIPT.between[roundDone];
-    if(msg&&voiceOn){ speak(msg,()=>{ if(breathRunning)startPhase(); }); return; }
+function nxt(){
+  if(!running)return;
+  if(pidx>=PHASES.length){
+    pidx=0;rdone++;updDots();
+    if(rdone>=ROUNDS){done();return;}
+    const m=VS.mid[rdone];
+    if(m&&voiceOn){speak(m,()=>{if(running)ph();});return;}
   }
-  startPhase();
+  ph();
 }
-
-function startPhase(){
-  if(!breathRunning)return;
-  const ph  = PHASES[phaseIdx];
-  phaseDur  = ph.t*1000; phaseStart=performance.now();
-  secLeft   = ph.t;
-  phaseText.textContent = ph.n;
-  phaseSub.textContent  = ph.n==='吸氣'?'用鼻子緩緩吸入':'用嘴慢慢吐出';
-  ballTargetScale = ph.n==='吸氣' ? 1.55 : 0.70;
-
-  /* 球材質顏色切換 */
-  const outer=ball3d&&ball3d.getObjectByName('outer');
-  if(outer){
-    outer.material.color.setHex(ph.n==='吸氣'?0x17C9AF:0x0D7A6B);
-    outer.material.emissive.setHex(ph.n==='吸氣'?0x0D7A6B:0x042820);
-    outer.material.emissiveIntensity=ph.n==='吸氣'?0.5:0.25;
+function ph(){
+  if(!running)return;
+  const p=PHASES[pidx];sleft=p.t;
+  bphase.textContent=p.n;
+  bsub.textContent=p.n==='吸氣'?'用鼻子緩緩吸入':'用嘴慢慢吐出';
+  tgtS=p.n==='吸氣'?1.55:.70;
+  const ob=ball&&ball.getObjectByName('outer');
+  if(ob){
+    ob.material.color.setHex(p.n==='吸氣'?0x17C9AF:0x0D7A6B);
+    ob.material.emissive.setHex(p.n==='吸氣'?0x0D7A6B:0x042820);
+    ob.material.emissiveIntensity=p.n==='吸氣'?.5:.25;
   }
-
-  const w=VOICE_SCRIPT.phase[ph.n]; if(w)speak(w);
-
-  clearInterval(ticker);
-  ticker=setInterval(()=>{
-    secLeft--;
-    if(secLeft<=0){ clearInterval(ticker); phaseIdx++; setTimeout(()=>{ if(breathRunning)nextPhase(); },100); }
-  },1000);
+  const w=VS.ph[p.n];if(w)speak(w);
+  clearInterval(tk);
+  tk=setInterval(()=>{sleft--;if(sleft<=0){clearInterval(tk);pidx++;setTimeout(()=>{if(running)nxt();},100);}},1000);
 }
-
-function finishBreath(){
-  breathRunning=false; clearInterval(ticker);
-  mainBtn.textContent='再來一次'; resetBtn.style.display='block';
-  phaseText.textContent='完成'; phaseSub.textContent='很棒，保持這份平靜';
-  hudStatus.textContent='練習完成'; ballTargetScale=1.08;
-  for(let i=0;i<ROUNDS;i++){ const d=document.getElementById('rd'+i); if(d)d.className='rdot done'; }
-  if(voiceOn)setTimeout(()=>speak(VOICE_SCRIPT.finish),600);
-  setTimeout(()=>{ if(!breathRunning)ballTargetScale=1; },2200);
+function done(){
+  running=false;clearInterval(tk);
+  mbtn.textContent='再來一次';rbtn.style.display='block';
+  bphase.textContent='完成';bsub.textContent='很棒，保持這份平靜';
+  status.textContent='練習完成';tgtS=1.08;
+  for(let i=0;i<ROUNDS;i++){const d=$('rd'+i);if(d)d.className='rd done';}
+  if(voiceOn)setTimeout(()=>speak(VS.end),600);
+  setTimeout(()=>{if(!running)tgtS=1;},2200);
 }
 
 /* ══ 退出 ══ */
-function exitAR(){
-  if(xrSession) xrSession.end(); else onSessionEnd();
-}
-function onSessionEnd(){
-  breathRunning=false; synth&&synth.cancel();
-  if(renderer){ renderer.setAnimationLoop(null); renderer.domElement&&renderer.domElement.remove(); }
-  hud.classList.remove('active');
-  document.getElementById('splash').classList.remove('hide');
-  ballPlaced=false; lastHitPose=null;
-  xrSession=null; hitTestSrc=null; xrController=null;
+function exitAR(){xrSession?xrSession.end():onEnd();}
+function onEnd(){
+  running=false;synth&&synth.cancel();
+  renderer&&(renderer.setAnimationLoop(null),renderer.domElement?.remove());
+  hud.classList.remove('on');
+  $('splash').classList.remove('hide');
+  placed=false;lastPose=null;xrSession=null;hitSrc=null;xrCtrl=null;
 }
 
-/* ── 啟動時檢查支援 ── */
+/* 啟動檢查 */
 window.addEventListener('DOMContentLoaded',()=>{
   if(!navigator.xr){
-    document.getElementById('start-ar-btn').textContent='⚠ 需要 Android Chrome';
-    document.getElementById('no-xr-msg').style.display='block';
-    document.getElementById('no-xr-msg').textContent='請用 Android Chrome 開啟此頁面';
+    $('go-btn').textContent='⚠ 需要 Android Chrome';
+    $('err').style.display='block';
+    $('err').textContent='請用 Android Chrome 開啟此頁面';
   }
 });
 </script>
