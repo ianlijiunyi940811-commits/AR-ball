@@ -166,7 +166,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 
   <div id="scan">
     <div class="s-ring"></div>
-    <p>慢慢移動手機，偵測桌面或地板</p>
+    <p>把手機鏡頭朝下，對著桌面或地板慢慢移動</p>
   </div>
 
   <div id="breath">
@@ -296,7 +296,11 @@ async function startAR(){
 
   refSpace=await xrSession.requestReferenceSpace('local');
   const vs=await xrSession.requestReferenceSpace('viewer');
-  hitSrc=await xrSession.requestHitTestSource({space:vs});
+  /* offsetRay 向下傾斜 37°，讓近距離桌面（0.3~1m）能被偵測到 */
+  hitSrc=await xrSession.requestHitTestSource({
+    space:vs,
+    offsetRay:new XRRay({x:0,y:0,z:0},{x:0,y:-0.6,z:-0.8})
+  });
 
   /* controller select = 手機點擊 AR 畫面的空白區域 */
   xrCtrl=renderer.xr.getController(0);
@@ -351,32 +355,66 @@ function makeBall(){
   if(ball){scene.remove(ball);ball=null;}
   const g=new THREE.Group();
 
-  /* 外球 */
+  /* ── 用 Canvas 貼圖畫高光，完全不產生 3D 凸出 ── */
+  const cvs=document.createElement('canvas');
+  cvs.width=cvs.height=512;
+  const ctx=cvs.getContext('2d');
+
+  /* 底色：深湖水綠 */
+  const bg=ctx.createRadialGradient(256,256,10,256,256,256);
+  bg.addColorStop(0,'#1ED4B8');
+  bg.addColorStop(.5,'#0F9080');
+  bg.addColorStop(1,'#074A40');
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,512,512);
+
+  /* 左上高光橢圓 */
+  const hl=ctx.createRadialGradient(155,145,0,155,145,130);
+  hl.addColorStop(0,'rgba(210,255,248,0.72)');
+  hl.addColorStop(.45,'rgba(180,245,235,0.35)');
+  hl.addColorStop(1,'rgba(180,245,235,0)');
+  ctx.save();
+  ctx.scale(1,.65);
+  ctx.fillStyle=hl;
+  ctx.beginPath();
+  ctx.arc(155,145/0.65,130,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  /* 右下反光 */
+  const rl=ctx.createRadialGradient(340,340,0,340,340,80);
+  rl.addColorStop(0,'rgba(23,201,175,0.25)');
+  rl.addColorStop(1,'rgba(23,201,175,0)');
+  ctx.fillStyle=rl;
+  ctx.beginPath();ctx.arc(340,340,80,0,Math.PI*2);ctx.fill();
+
+  const tex=new THREE.CanvasTexture(cvs);
+
+  /* 外球：套貼圖 */
   const om=new THREE.MeshStandardMaterial({
-    color:0x12A08C,emissive:0x0A4A3C,emissiveIntensity:.4,
-    metalness:.15,roughness:.12,transparent:true,opacity:.90});
+    map:tex,
+    emissive:new THREE.Color(0x0A4A3C),emissiveIntensity:.35,
+    metalness:.10,roughness:.15,
+    transparent:true,opacity:.92});
   const ob=new THREE.Mesh(new THREE.SphereGeometry(.10,48,48),om);
   ob.name='outer';g.add(ob);
 
-  /* 內核 */
+  /* 內核發光 */
   const cm=new THREE.MeshStandardMaterial({
-    color:0x5DE5CE,emissive:0x17C9AF,emissiveIntensity:1.0,
-    transparent:true,opacity:.5,roughness:0,metalness:0});
-  const cb=new THREE.Mesh(new THREE.SphereGeometry(.055,32,32),cm);
+    color:0x5DE5CE,emissive:0x17C9AF,emissiveIntensity:1.1,
+    transparent:true,opacity:.48,roughness:0,metalness:0});
+  const cb=new THREE.Mesh(new THREE.SphereGeometry(.050,32,32),cm);
   cb.name='core';g.add(cb);
 
-  /* 高光 */
-  const sp=new THREE.Mesh(new THREE.SphereGeometry(.025,12,12),
-    new THREE.MeshBasicMaterial({color:0xD4F5EF,transparent:true,opacity:.6}));
-  sp.position.set(-.034,.054,.074);g.add(sp);
-
-  /* 光暈外殼 */
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(.118,16,16),
-    new THREE.MeshBasicMaterial({color:0x17C9AF,transparent:true,opacity:.06,side:THREE.BackSide})));
+  /* 外發光殼（BackSide，比外球略大，產生邊緣光暈）*/
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(.110,16,16),
+    new THREE.MeshBasicMaterial({
+      color:0x17C9AF,transparent:true,opacity:.05,side:THREE.BackSide})));
 
   /* 地面陰影 */
-  const sg=new THREE.CircleGeometry(.10,32);sg.rotateX(-Math.PI/2);
-  const sh=new THREE.Mesh(sg,new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.20}));
+  const sg=new THREE.CircleGeometry(.09,32);sg.rotateX(-Math.PI/2);
+  const sh=new THREE.Mesh(sg,
+    new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.18}));
   sh.position.y=-.101;g.add(sh);
 
   g.visible=false;scene.add(g);ball=g;
