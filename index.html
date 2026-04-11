@@ -166,7 +166,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 
   <div id="scan">
     <div class="s-ring"></div>
-    <p>把手機鏡頭朝下，對著桌面或地板慢慢移動</p>
+    <p>將手機對準桌面，慢慢左右移動</p>
   </div>
 
   <div id="breath">
@@ -296,11 +296,8 @@ async function startAR(){
 
   refSpace=await xrSession.requestReferenceSpace('local');
   const vs=await xrSession.requestReferenceSpace('viewer');
-  /* offsetRay 向下傾斜 37°，讓近距離桌面（0.3~1m）能被偵測到 */
-  hitSrc=await xrSession.requestHitTestSource({
-    space:vs,
-    offsetRay:new XRRay({x:0,y:0,z:0},{x:0,y:-0.6,z:-0.8})
-  });
+  /* 第一版可運作的設定：讓 ARCore 依手機朝向自動決定射線方向，不指定 offsetRay */
+  hitSrc=await xrSession.requestHitTestSource({space:vs});
 
   /* controller select = 手機點擊 AR 畫面的空白區域 */
   xrCtrl=renderer.xr.getController(0);
