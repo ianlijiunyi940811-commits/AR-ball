@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AR 呼吸球</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --teal-bright: #17C9AF;
+    --teal-mid:    #12A08C;
+    --teal-deep:   #0D7A6B;
+    --teal-pale:   #A8F5EA;
+    --teal-border: #0F4A42;
+    --teal-bg:     #071F1C;
+    --teal-surface:#0B2E29;
+    --text-pri:    #D4F5EF;
+    --text-sec:    #7ED8CB;
+    --text-muted:  #3D8F83;
+  }
+
+  body {
+    background: var(--teal-bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden; color: var(--text-pri);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  canvas { display: block; }
+
+  /* ── 啟動畫面 ── */
+  #splash {
+    position: fixed; inset: 0;
+    background: var(--teal-bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px; z-index: 100;
+    transition: opacity 0.6s ease;
+  }
+  #splash.hide { opacity: 0; pointer-events: none; }
+
+  .splash-ball {
+    width: 100px; height: 100px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 32%,
+      #A8F5EA 0%, #5DE5CE 22%, #12A08C 55%, #0D7A6B 85%, #064038 100%);
+    box-shadow: 0 0 40px rgba(23,201,175,0.5), 0 0 80px rgba(23,201,175,0.2);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100%{ transform:scale(1);   box-shadow:0 0 40px rgba(23,201,175,.5),0 0 80px rgba(23,201,175,.2); }
+    50%    { transform:scale(1.15);box-shadow:0 0 60px rgba(23,201,175,.7),0 0 120px rgba(23,201,175,.3); }
+  }
+  .splash-title { font-size: 22px; font-weight: 700; color: var(--teal-bright); letter-spacing: 0.04em; }
+  .splash-desc  { font-size: 14px; color: var(--text-muted); text-align: center; line-height: 1.7; max-width: 260px; }
+
+  #start-ar-btn {
+    margin-top: 8px;
+    padding: 14px 40px; border-radius: 30px;
+    border: 1.5px solid var(--teal-mid);
+    background: var(--teal-deep); color: var(--teal-pale);
+    font-size: 16px; font-weight: 600; letter-spacing: 0.04em;
+    cursor: pointer;
+    box-shadow: 0 0 24px rgba(18,160,140,0.35);
+    transition: all 0.2s ease;
+  }
+  #start-ar-btn:active { transform: scale(0.96); }
+  #no-xr-msg { font-size: 13px; color: #E24B4A; text-align: center; max-width: 280px; line-height:1.6; display:none; }
+
+  /* ── AR HUD ── */
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    z-index: 10; display: none;
+  }
+  #hud.active { display: block; }
+
+  /* 頂部 */
+  .hud-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 20px 20px 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .hud-title { font-size: 14px; font-weight: 600; color: var(--teal-bright); letter-spacing: 0.04em;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+  .hud-status { font-size: 12px; color: var(--text-sec);
+    text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+
+  /* 掃描提示 */
+  #scan-hint {
+    position: absolute; bottom: 180px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    transition: opacity 0.4s ease;
+  }
+  #scan-hint.hidden { opacity: 0; pointer-events: none; }
+  .scan-ring {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid var(--teal-bright);
+    animation: scan-pulse 1.6s ease-in-out infinite;
+    opacity: 0.8;
+  }
+  @keyframes scan-pulse { 0%,100%{transform:scale(1);opacity:.8} 50%{transform:scale(1.18);opacity:.4} }
+  .scan-text { font-size: 13px; color: var(--text-sec);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8); letter-spacing: 0.04em; }
+
+  /* 底部控制 */
+  .hud-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 0 20px 36px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    pointer-events: auto;
+  }
+
+  /* 呼吸狀態顯示 */
+  #breath-display {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity 0.5s ease;
+  }
+  #breath-display.show { opacity: 1; }
+  .breath-phase {
+    font-size: 28px; font-weight: 700; color: var(--teal-bright);
+    text-shadow: 0 0 20px rgba(23,201,175,0.8), 0 2px 8px rgba(0,0,0,0.6);
+    letter-spacing: 0.04em;
+  }
+  .breath-sub { font-size: 13px; color: var(--text-sec); text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+
+  /* 輪次點 */
+  #round-dots {
+    display: flex; gap: 7px; justify-content: center;
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  #round-dots.show { opacity: 1; }
+  .rdot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(15,74,66,0.8);
+    transition: all 0.4s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .rdot.done { background: var(--teal-bright); }
+  .rdot.active { background: var(--teal-bright); box-shadow: 0 0 10px var(--teal-bright); }
+
+  /* 按鈕列 */
+  .btn-row { display: flex; gap: 10px; align-items: center; }
+
+  .voice-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 14px; height: 44px; border-radius: 22px;
+    border: 1.5px solid rgba(15,74,66,0.9);
+    background: rgba(7,31,28,0.75);
+    backdrop-filter: blur(8px);
+    cursor: pointer; transition: all 0.2s ease;
+  }
+  .voice-btn.on { border-color: var(--teal-mid); background: rgba(11,46,41,0.85); }
+  .voice-btn-icon { font-size: 15px; }
+  .voice-btn-label { font-size: 12px; color: var(--text-muted); transition: color 0.2s; }
+  .voice-btn.on .voice-btn-label { color: var(--teal-pale); }
+
+  .action-btn {
+    height: 44px; padding: 0 28px; border-radius: 22px;
+    border: 1.5px solid var(--teal-mid);
+    background: rgba(13,122,107,0.85);
+    backdrop-filter: blur(8px);
+    color: var(--teal-pale); font-size: 15px; font-weight: 600;
+    cursor: pointer; letter-spacing: 0.04em;
+    box-shadow: 0 0 20px rgba(18,160,140,0.3);
+    transition: all 0.2s ease;
+  }
+  .action-btn:active { transform: scale(0.96); }
+  .action-btn.secondary {
+    background: rgba(7,31,28,0.75);
+    border-color: rgba(15,74,66,0.9);
+    color: var(--text-muted);
+    box-shadow: none;
+  }
+
+  /* 語音提示條 */
+  #voice-bar {
+    position: absolute; top: 72px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(11,46,41,0.85); backdrop-filter: blur(8px);
+    border: 0.5px solid var(--teal-border); border-radius: 20px;
+    padding: 5px 14px; white-space: nowrap;
+    opacity: 0; transition: opacity 0.35s ease; pointer-events: none;
+  }
+  #voice-bar.show { opacity: 1; }
+  .v-waves { display:flex; align-items:flex-end; gap:2px; height:12px; }
+  .v-waves span { display:block; width:3px; border-radius:2px; background:var(--teal-bright);
+    animation: vw .75s ease-in-out infinite; }
+  .v-waves span:nth-child(1){ height:5px; animation-delay:0s; }
+  .v-waves span:nth-child(2){ height:10px; animation-delay:.15s; }
+  .v-waves span:nth-child(3){ height:5px; animation-delay:.3s; }
+  @keyframes vw { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(0.35)} }
+  .vb-text { font-size:12px; color:var(--text-sec); letter-spacing:0.04em; }
+
+  /* 退出按鈕 */
+  #exit-btn {
+    position: absolute; top: 18px; right: 18px;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(7,31,28,0.75); backdrop-filter: blur(6px);
+    border: 1px solid rgba(15,74,66,0.8);
+    color: var(--text-muted); font-size: 18px; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+
+<!-- 啟動畫面 -->
+<div id="splash">
+  <div class="splash-ball"></div>
+  <div class="splash-title">AR 呼吸球</div>
+  <div class="splash-desc">開啟相機，掃描桌面或地板，<br>點擊螢幕放置呼吸球</div>
+  <button id="start-ar-btn" onclick="startAR()">開啟相機 AR</button>
+  <div id="no-xr-msg"></div>
+</div>
+
+<!-- AR HUD -->
+<div id="hud">
+  <div class="hud-top">
+    <span class="hud-title">ADHD 同調呼吸</span>
+    <span class="hud-status" id="hud-status">掃描平面中…</span>
+  </div>
+
+  <div id="voice-bar">
+    <div class="v-waves"><span></span><span></span><span></span></div>
+    <span class="vb-text" id="vb-text"></span>
+  </div>
+
+  <div id="scan-hint">
+    <div class="scan-ring"></div>
+    <div class="scan-text">慢慢移動手機，偵測平面</div>
+  </div>
+
+  <div class="hud-bottom">
+    <div id="breath-display">
+      <div class="breath-phase" id="phase-text">—</div>
+      <div class="breath-sub" id="phase-sub"></div>
+    </div>
+
+    <div id="round-dots"></div>
+
+    <div class="btn-row">
+      <button class="voice-btn on" id="voice-btn" onclick="toggleVoice()">
+        <span class="voice-btn-icon" id="v-icon">🔊</span>
+        <span class="voice-btn-label" id="v-label">語音開</span>
+      </button>
+      <button class="action-btn" id="main-btn" onclick="mainAction()" style="display:none">開始呼吸</button>
+      <button class="action-btn secondary" id="reset-btn" onclick="resetBall()" style="display:none">重新放置</button>
+    </div>
+
+    <div style="font-size:11px;color:var(--text-muted);letter-spacing:0.04em;text-align:center;
+      text-shadow:0 1px 6px rgba(0,0,0,0.8)">
+      同調呼吸 — 吸氣 5 秒 · 吐氣 6 秒，共 5 輪
+    </div>
+  </div>
+
+  <button id="exit-btn" onclick="exitAR()">✕</button>
+</div>
+
+<!-- Three.js + WebXR -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ══════════════════════════════════════════
+   AR 呼吸球 — WebXR Hit Test + Three.js r128
+   同調呼吸：吸氣5s / 吐氣6s × 5輪
+   ══════════════════════════════════════════ */
+
+/* ── 語音設定 ── */
+const VOICE_SCRIPT = {
+  intro: ['歡迎開始同調呼吸練習。','請保持手機穩定，跟著球的節奏呼吸。','吸氣五秒，吐氣六秒。'],
+  phase: { '吸氣':'吸氣', '吐氣':'吐氣' },
+  between: [null,'很好，繼續保持。','讓呼吸更自然。','感受氣息流動。','最後一輪，保持平靜。'],
+  finish: '練習完成，帶著這份平靜繼續你的一天。'
+};
+const PHASES = [{n:'吸氣',t:5},{n:'吐氣',t:6}];
+const ROUNDS  = 5;
+
+/* ── 狀態 ── */
+let scene, camera, renderer, xrSession, refSpace, hitTestSrc;
+let reticle, ball3d, ballPlaced = false;
+let breathRunning = false, roundDone = 0, phaseIdx = 0;
+let secLeft = 0, ticker = null, animRAF = null;
+let phaseStart = 0, phaseDur = 0;
+let voiceOn = true, preferredVoice = null;
+let ballTargetScale = 1, ballCurrentScale = 1;
+let clock, mixers = [];
+
+/* ── DOM ── */
+const hud        = document.getElementById('hud');
+const scanHint   = document.getElementById('scan-hint');
+const phaseText  = document.getElementById('phase-text');
+const phaseSub   = document.getElementById('phase-sub');
+const hudStatus  = document.getElementById('hud-status');
+const mainBtn    = document.getElementById('main-btn');
+const resetBtn   = document.getElementById('reset-btn');
+const breathDisp = document.getElementById('breath-display');
+const roundDots  = document.getElementById('round-dots');
+const voiceBar   = document.getElementById('voice-bar');
+const vbText     = document.getElementById('vb-text');
+
+/* ── 語音 ── */
+const synth = window.speechSynthesis;
+(function initVoice() {
+  if (!synth) return;
+  function pick() {
+    const vs = synth.getVoices();
+    preferredVoice =
+      vs.find(v => v.lang==='zh-TW' && v.name.includes('Meijia')) ||
+      vs.find(v => v.lang==='zh-TW' && v.name.includes('Ting'))   ||
+      vs.find(v => v.lang==='zh-TW') ||
+      vs.find(v => v.lang.startsWith('zh')) || null;
+  }
+  synth.getVoices().length ? pick() : synth.addEventListener('voiceschanged', pick, {once:true});
+})();
+
+let barTimer = null;
+function speak(text, cb) {
+  if (!voiceOn || !synth || !text) { cb && setTimeout(cb,0); return; }
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang='zh-TW'; if(preferredVoice) u.voice=preferredVoice;
+  u.rate=0.80; u.pitch=1.0; u.volume=1.0;
+  vbText.textContent = text;
+  voiceBar.classList.add('show');
+  clearTimeout(barTimer);
+  const done = () => { voiceBar.classList.remove('show'); cb && cb(); };
+  u.onend = done; u.onerror = done;
+  barTimer = setTimeout(()=>voiceBar.classList.remove('show'), text.length*200+1500);
+  synth.speak(u);
+}
+function speakSeq(lines, cb) {
+  if (!lines||!lines.length){ cb&&cb(); return; }
+  const [h,...t]=lines;
+  if(!h){speakSeq(t,cb);return;}
+  speak(h, ()=> t.length ? setTimeout(()=>speakSeq(t,cb),350) : cb&&cb());
+}
+function toggleVoice() {
+  voiceOn=!voiceOn;
+  document.getElementById('voice-btn').classList.toggle('on',voiceOn);
+  document.getElementById('v-icon').textContent = voiceOn?'🔊':'🔇';
+  document.getElementById('v-label').textContent = voiceOn?'語音開':'語音關';
+  if(!voiceOn){synth&&synth.cancel();voiceBar.classList.remove('show');}
+}
+
+/* ── WebXR 支援檢查 ── */
+async function startAR() {
+  if (!navigator.xr) { showNoXR('您的瀏覽器不支援 WebXR。請使用 Android Chrome 或 iOS Safari 16+。'); return; }
+  const supported = await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
+  if (!supported) { showNoXR('此裝置不支援 WebXR AR。\n建議使用 Android Chrome（需開啟 WebXR 實驗功能）。'); return; }
+  initThree();
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'light-estimation'],
+      domOverlay: { root: hud }
+    });
+  } catch(e) { showNoXR('無法啟動 AR 工作階段：' + e.message); return; }
+
+  document.getElementById('splash').classList.add('hide');
+  hud.style.display = 'block';
+  hud.classList.add('active');
+
+  renderer.xr.setReferenceSpaceType('local');
+  await renderer.xr.setSession(xrSession);
+  xrSession.addEventListener('end', onSessionEnd);
+
+  const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+  hitTestSrc = await xrSession.requestHitTestSource({ space: viewerSpace });
+  refSpace    = await xrSession.requestReferenceSpace('local');
+
+  clock = new THREE.Clock();
+  renderer.setAnimationLoop(onXRFrame);
+}
+
+function showNoXR(msg) {
+  const el = document.getElementById('no-xr-msg');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('start-ar-btn').style.display = 'none';
+}
+
+/* ── Three.js 初始化 ── */
+function initThree() {
+  scene = new THREE.Scene();
+
+  // 環境光
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(2, 6, 3);
+  scene.add(dirLight);
+  const fillLight = new THREE.DirectionalLight(0x88FFEE, 0.4);
+  fillLight.position.set(-3, 2, -2);
+  scene.add(fillLight);
+
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.body.appendChild(renderer.domElement);
+  renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:1;';
+
+  // ── 瞄準標記（reticle） ──
+  const reticleGeo = new THREE.RingGeometry(0.04, 0.06, 32);
+  reticleGeo.rotateX(-Math.PI/2);
+  const reticleMat = new THREE.MeshBasicMaterial({ color: 0x17C9AF, side: THREE.DoubleSide, transparent:true, opacity:0.75 });
+  reticle = new THREE.Mesh(reticleGeo, reticleMat);
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  scene.add(reticle);
+
+  // 外環（偵測到時閃爍）
+  const outerGeo = new THREE.RingGeometry(0.075, 0.085, 32);
+  outerGeo.rotateX(-Math.PI/2);
+  const outerMat = new THREE.MeshBasicMaterial({ color: 0x17C9AF, transparent:true, opacity:0.35 });
+  const outerRing = new THREE.Mesh(outerGeo, outerMat);
+  reticle.add(outerRing);
+
+  // ── 3D 呼吸球 ──
+  createBall();
+
+  // ── tap 放置 ──
+  renderer.domElement.addEventListener('click', onTap);
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+/* ── 建立 3D 球體（PBR 材質） ── */
+function createBall() {
+  if (ball3d) { scene.remove(ball3d); ball3d=null; }
+
+  const group = new THREE.Group();
+
+  // 主球體 — MeshPhysicalMaterial 模擬玻璃/流體感
+  const geo = new THREE.SphereGeometry(0.08, 64, 64);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color:           new THREE.Color(0x12A08C),
+    emissive:        new THREE.Color(0x0D7A6B),
+    emissiveIntensity: 0.18,
+    metalness:       0.05,
+    roughness:       0.08,
+    transmission:    0.35,      // 半透明
+    thickness:       0.3,
+    ior:             1.42,      // 玻璃折射率
+    clearcoat:       1.0,
+    clearcoatRoughness: 0.05,
+    transparent:     true,
+    opacity:         0.92,
+    envMapIntensity: 1.0,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'ballMesh';
+  group.add(mesh);
+
+  // 內部發光核心
+  const coreGeo = new THREE.SphereGeometry(0.045, 32, 32);
+  const coreMat = new THREE.MeshPhysicalMaterial({
+    color:      new THREE.Color(0x5DE5CE),
+    emissive:   new THREE.Color(0x17C9AF),
+    emissiveIntensity: 0.6,
+    transparent:true, opacity:0.45,
+    roughness:  0.0, metalness:0.0,
+  });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  core.name = 'core';
+  group.add(core);
+
+  // 高光亮點
+  const specGeo = new THREE.SphereGeometry(0.022, 16, 16);
+  const specMat = new THREE.MeshBasicMaterial({ color:0xD4F5EF, transparent:true, opacity:0.55 });
+  const spec = new THREE.Mesh(specGeo, specMat);
+  spec.position.set(-0.028, 0.042, 0.065);
+  group.add(spec);
+
+  // 底部柔焦光暈
+  const glowGeo = new THREE.SphereGeometry(0.095, 16, 16);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color:0x17C9AF, transparent:true, opacity:0.07, side:THREE.BackSide
+  });
+  group.add(new THREE.Mesh(glowGeo, glowMat));
+
+  // 陰影環
+  const shadowGeo = new THREE.CircleGeometry(0.085, 32);
+  shadowGeo.rotateX(-Math.PI/2);
+  const shadowMat = new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0.18 });
+  const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+  shadow.position.y = -0.081;
+  group.add(shadow);
+
+  group.visible = false;
+  scene.add(group);
+  ball3d = group;
+}
+
+/* ── 點擊放置 ── */
+function onTap() {
+  if (!reticle.visible || breathRunning) return;
+  if (!ballPlaced) placeBall();
+}
+
+function placeBall() {
+  if (!reticle.visible) return;
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  reticle.matrix.decompose(pos, quat, new THREE.Vector3());
+  ball3d.position.copy(pos);
+  ball3d.position.y += 0.085; // 讓球心在平面上方
+  ball3d.visible = true;
+  ball3d.scale.setScalar(0);
+  ballPlaced = true;
+  ballCurrentScale = 0;
+  ballTargetScale  = 1;
+
+  // 動畫入場
+  animateScale(0, 1, 600);
+
+  scanHint.classList.add('hidden');
+  mainBtn.style.display = 'block';
+  resetBtn.style.display = 'block';
+  hudStatus.textContent = '點擊「開始呼吸」';
+  buildDots();
+}
+
+function resetBall() {
+  if (breathRunning) stopBreath();
+  ballPlaced = false;
+  ball3d.visible = false;
+  mainBtn.style.display = 'none';
+  resetBtn.style.display = 'none';
+  breathDisp.classList.remove('show');
+  roundDots.classList.remove('show');
+  scanHint.classList.remove('hidden');
+  hudStatus.textContent = '掃描平面中…';
+  phaseText.textContent = '—'; phaseSub.textContent = '';
+  ballTargetScale = 1;
+}
+
+/* ── XR 每幀 ── */
+function onXRFrame(time, frame) {
+  if (!frame) return;
+  const pose = frame.getViewerPose(refSpace);
+
+  // Hit test
+  if (hitTestSrc && !ballPlaced) {
+    const hits = frame.getHitTestResults(hitTestSrc);
+    if (hits.length > 0) {
+      const hitPose = hits[0].getPose(refSpace);
+      reticle.visible = true;
+      reticle.matrix.fromArray(hitPose.transform.matrix);
+      hudStatus.textContent = '偵測到平面，點擊放置';
+    } else {
+      reticle.visible = false;
+      hudStatus.textContent = '掃描平面中…';
+    }
+  }
+
+  // 球體動畫 — 持續插值縮放
+  if (ball3d && ball3d.visible) {
+    const spd = breathRunning ? 0.025 : 0.06;
+    ballCurrentScale += (ballTargetScale - ballCurrentScale) * spd;
+    ball3d.scale.setScalar(ballCurrentScale);
+
+    // 核心呼吸光效
+    const core = ball3d.getObjectByName('core');
+    if (core) {
+      const t = Date.now() * 0.001;
+      core.material.emissiveIntensity = 0.45 + 0.2 * Math.sin(t * 1.2);
+    }
+    // 球體自轉（細微）
+    ball3d.rotation.y += 0.002;
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* ── 縮放動畫輔助 ── */
+function animateScale(from, to, ms) {
+  const start = performance.now();
+  ballCurrentScale = from;
+  (function step(now) {
+    const t = Math.min((now-start)/ms, 1);
+    const e = t<0.5?2*t*t:-1+(4-2*t)*t;
+    ballCurrentScale = from + (to-from)*e;
+    ball3d.scale.setScalar(ballCurrentScale);
+    if(t<1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+/* ══ 呼吸邏輯 ══ */
+function buildDots() {
+  roundDots.innerHTML='';
+  for(let i=0;i<ROUNDS;i++){
+    const d=document.createElement('div');
+    d.className='rdot'; d.id='rd'+i;
+    roundDots.appendChild(d);
+  }
+}
+function updateDots() {
+  for(let i=0;i<ROUNDS;i++){
+    const d=document.getElementById('rd'+i);
+    if(!d)continue;
+    d.className='rdot'+(i<roundDone?' done':i===roundDone?' active':'');
+  }
+}
+
+function mainAction() {
+  breathRunning ? stopBreath() : startBreath();
+}
+
+function startBreath() {
+  breathRunning=true; roundDone=0; phaseIdx=0;
+  mainBtn.textContent='停止'; resetBtn.style.display='none';
+  breathDisp.classList.add('show');
+  roundDots.classList.add('show');
+  updateDots();
+
+  speakSeq(VOICE_SCRIPT.intro, ()=>{ if(breathRunning) nextPhase(); });
+}
+
+function stopBreath() {
+  breathRunning=false;
+  synth&&synth.cancel(); voiceBar.classList.remove('show');
+  clearInterval(ticker); cancelAnimationFrame(animRAF);
+  mainBtn.textContent='開始呼吸';
+  resetBtn.style.display='block';
+  phaseText.textContent='已暫停';
+  phaseSub.textContent='按開始繼續';
+  hudStatus.textContent='已暫停';
+  ballTargetScale=1;
+}
+
+function nextPhase() {
+  if(!breathRunning)return;
+  if(phaseIdx>=PHASES.length){
+    phaseIdx=0; roundDone++;
+    updateDots();
+    if(roundDone>=ROUNDS){ finishBreath(); return; }
+    const msg=VOICE_SCRIPT.between[roundDone];
+    if(msg&&voiceOn){ speak(msg,()=>{ if(breathRunning) startPhase(); }); return; }
+  }
+  startPhase();
+}
+
+function startPhase() {
+  if(!breathRunning)return;
+  const ph=PHASES[phaseIdx];
+  phaseDur=ph.t*1000;
+  phaseStart=performance.now();
+  secLeft=ph.t;
+
+  phaseText.textContent=ph.n;
+  phaseSub.textContent= ph.n==='吸氣'?'用鼻子緩緩吸入':'用嘴慢慢吐出';
+
+  // 球體縮放：吸氣脹大到1.5，吐氣縮到0.72
+  ballTargetScale = ph.n==='吸氣' ? 1.5 : 0.72;
+
+  // 球材質顏色切換
+  const ballMesh=ball3d&&ball3d.getObjectByName('ballMesh');
+  if(ballMesh){
+    ballMesh.material.color.setHex(ph.n==='吸氣'?0x17C9AF:0x0D7A6B);
+    ballMesh.material.emissive.setHex(ph.n==='吸氣'?0x12A08C:0x064038);
+    ballMesh.material.emissiveIntensity=ph.n==='吸氣'?0.25:0.12;
+  }
+
+  const w=VOICE_SCRIPT.phase[ph.n];
+  if(w)speak(w);
+
+  clearInterval(ticker);
+  ticker=setInterval(()=>{ secLeft--; if(secLeft<=0){clearInterval(ticker); phaseIdx++; setTimeout(()=>{ if(breathRunning) nextPhase(); },100); }},1000);
+}
+
+function finishBreath() {
+  breathRunning=false;
+  clearInterval(ticker);
+  mainBtn.textContent='再來一次';
+  resetBtn.style.display='block';
+  phaseText.textContent='完成';
+  phaseSub.textContent='很棒，保持這份平靜';
+  hudStatus.textContent='練習完成';
+  ballTargetScale=1.08;
+  for(let i=0;i<ROUNDS;i++){const d=document.getElementById('rd'+i);if(d)d.className='rdot done';}
+  if(voiceOn)setTimeout(()=>speak(VOICE_SCRIPT.finish),600);
+  setTimeout(()=>{ if(!breathRunning)ballTargetScale=1; },2000);
+}
+
+/* ── 退出 ── */
+function exitAR() {
+  if(xrSession){ xrSession.end(); }
+  else { onSessionEnd(); }
+}
+function onSessionEnd() {
+  breathRunning=false; synth&&synth.cancel();
+  renderer&&renderer.setAnimationLoop(null);
+  renderer&&renderer.domElement&&renderer.domElement.remove();
+  hud.classList.remove('active'); hud.style.display='none';
+  document.getElementById('splash').classList.remove('hide');
+  ballPlaced=false;
+  xrSession=null; hitTestSrc=null;
+}
+
+/* ── 瀏覽器相容提示 ── */
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(!navigator.xr){
+    document.getElementById('start-ar-btn').textContent='⚠ 需要 AR 相容瀏覽器';
+    document.getElementById('no-xr-msg').style.display='block';
+    document.getElementById('no-xr-msg').textContent='請使用 Android Chrome 或 iOS Safari 開啟此頁面';
+  }
+});
+</script>
+</body>
+</html>
