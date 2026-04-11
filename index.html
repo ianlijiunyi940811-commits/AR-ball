@@ -4,50 +4,35 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>AR 呼吸球</title>
+
+<!-- 8th Wall A-Frame + SLAM Engine (from bronson113/capabilities architecture) -->
+<script crossorigin="anonymous" src="https://cdn.8thwall.com/web/aframe/8frame-1.5.0.min.js"></script>
+<script crossorigin="anonymous" src="https://cdn.8thwall.com/web/xrextras/xrextras.js"></script>
+<script crossorigin="anonymous"
+  src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+  async="true" data-preload-chunks="slam"></script>
+
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
   --tb:#17C9AF;--tm:#12A08C;--td:#0D7A6B;
-  --tp:#A8F5EA;--tbg:#071F1C;--ts:#0B2E29;
+  --tp:#A8F5EA;--tbg:#071F1C;
   --t1:#D4F5EF;--t2:#7ED8CB;--t3:#3D8F83;
 }
-html,body{width:100%;height:100%;overflow:hidden;background:#000;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  color:var(--t1);-webkit-tap-highlight-color:transparent;user-select:none;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  overflow:hidden;background:#000;color:var(--t1);
+  -webkit-tap-highlight-color:transparent;user-select:none;}
 
-/* 啟動畫面 */
-#splash{position:fixed;inset:0;background:var(--tbg);z-index:9999;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
-  transition:opacity .5s ease;}
-#splash.hide{opacity:0;pointer-events:none;}
-.s-ball{width:100px;height:100px;border-radius:50%;
-  background:radial-gradient(circle at 35% 32%,#A8F5EA 0%,#5DE5CE 22%,#12A08C 55%,#0D7A6B 85%,#064038 100%);
-  box-shadow:0 0 40px rgba(23,201,175,.5),0 0 80px rgba(23,201,175,.2);
-  animation:sp 2.4s ease-in-out infinite;}
-@keyframes sp{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
-.s-title{font-size:22px;font-weight:700;color:var(--tb);}
-.s-desc{font-size:14px;color:var(--t3);text-align:center;line-height:1.7;max-width:260px;}
-#go-btn{padding:14px 40px;border-radius:30px;border:1.5px solid var(--tm);
-  background:var(--td);color:var(--tp);font-size:16px;font-weight:600;cursor:pointer;
-  box-shadow:0 0 24px rgba(18,160,140,.35);}
-#go-btn:active{transform:scale(.96);}
-#err{font-size:13px;color:#E24B4A;text-align:center;max-width:280px;line-height:1.6;display:none;}
-
-/* HUD — 必須保留給 dom-overlay 使用
-   觸控穿透原則：整個 HUD pointer-events:none
-   只有按鈕區域 pointer-events:auto             */
+/* HUD — 疊在 A-Frame canvas 上，pointer-events:none 讓觸控穿透到場景 */
 #hud{
-  position:fixed;inset:0;z-index:10;
-  display:none;                        /* AR 啟動後改 block */
-  pointer-events:none;                 /* 空白處觸控穿透到 XR session */
+  position:fixed;inset:0;z-index:100;
+  pointer-events:none;
 }
-#hud.on{display:block;}
 
-/* 頂部資訊列 */
+/* 頂部 */
 #top-bar{
   position:absolute;top:0;left:0;right:0;
-  padding:safe-area-inset-top 20px 0;
-  padding-top:max(env(safe-area-inset-top,0px),20px);
+  padding:max(env(safe-area-inset-top,0px),20px) 20px 0;
   display:flex;align-items:center;justify-content:space-between;
 }
 #top-title{font-size:14px;font-weight:600;color:var(--tb);
@@ -81,24 +66,23 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 }
 #scan.hide{opacity:0;pointer-events:none;}
 .s-ring{width:64px;height:64px;border-radius:50%;
-  border:2.5px solid var(--tb);
-  animation:srp 1.6s ease-in-out infinite;}
+  border:2.5px solid var(--tb);animation:srp 1.6s ease-in-out infinite;}
 @keyframes srp{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.2);opacity:.4}}
-#scan p{font-size:13px;color:var(--t2);text-shadow:0 1px 8px rgba(0,0,0,.9);letter-spacing:.04em;}
+#scan-txt{font-size:13px;color:var(--t2);text-shadow:0 1px 8px rgba(0,0,0,.9);letter-spacing:.04em;}
 
 /* 呼吸狀態 */
 #breath{
-  position:absolute;bottom:175px;left:0;right:0;
+  position:absolute;bottom:180px;left:0;right:0;
   text-align:center;opacity:0;transition:opacity .5s;
 }
 #breath.on{opacity:1;}
 #b-phase{font-size:30px;font-weight:700;color:var(--tb);
   text-shadow:0 0 24px rgba(23,201,175,.8),0 2px 8px rgba(0,0,0,.7);}
-#b-sub{font-size:13px;color:var(--t2);text-shadow:0 1px 6px rgba(0,0,0,.8);}
+#b-sub{font-size:13px;color:var(--t2);text-shadow:0 1px 6px rgba(0,0,0,.8);margin-top:2px;}
 
 /* 輪次點 */
 #dots{
-  position:absolute;bottom:150px;left:0;right:0;
+  position:absolute;bottom:158px;left:0;right:0;
   display:flex;gap:7px;justify-content:center;
   opacity:0;transition:opacity .4s;
 }
@@ -107,12 +91,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 .rd.done{background:var(--tb);}
 .rd.cur{background:var(--tb);box-shadow:0 0 10px var(--tb);}
 
-/* 底部按鈕列 — 只有這裡 pointer-events:auto */
+/* 底部按鈕 — pointer-events:auto */
 #btns{
   position:absolute;bottom:0;left:0;right:0;
   padding:0 20px max(env(safe-area-inset-bottom,0px),28px);
   display:flex;flex-direction:column;align-items:center;gap:12px;
-  pointer-events:auto;        /* ← 這裡接收按鈕點擊 */
+  pointer-events:auto;
 }
 .btn-row{display:flex;gap:10px;align-items:center;}
 .vbtn{display:flex;align-items:center;gap:6px;padding:0 14px;height:44px;
@@ -126,37 +110,28 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
   color:var(--tp);font-size:15px;font-weight:600;cursor:pointer;
   box-shadow:0 0 20px rgba(18,160,140,.3);}
 .abtn:active{transform:scale(.96);}
-.abtn.sec{background:rgba(7,31,28,.85);border-color:rgba(15,74,66,.9);color:var(--t3);box-shadow:none;}
+.abtn.sec{background:rgba(7,31,28,.85);border-color:rgba(15,74,66,.9);
+  color:var(--t3);box-shadow:none;}
 .tip{font-size:11px;color:var(--t3);letter-spacing:.04em;text-align:center;
   text-shadow:0 1px 6px rgba(0,0,0,.9);}
 
-/* 退出鈕 — pointer-events:auto 個別設定 */
+/* 退出鈕 */
 #x-btn{
   position:absolute;top:max(env(safe-area-inset-top,0px),16px);right:16px;
   width:36px;height:36px;border-radius:50%;
   background:rgba(7,31,28,.85);border:1px solid rgba(15,74,66,.8);
   color:var(--t3);font-size:18px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;pointer-events:auto;    /* ← 個別允許點擊 */
+  cursor:pointer;pointer-events:auto;
 }
 </style>
 </head>
 <body>
 
-<!-- 啟動畫面 -->
-<div id="splash">
-  <div class="s-ball"></div>
-  <div class="s-title">AR 呼吸球</div>
-  <div class="s-desc">開啟相機，掃描桌面或地板，<br>點擊螢幕放置呼吸球</div>
-  <button id="go-btn" onclick="startAR()">開啟相機 AR</button>
-  <div id="err"></div>
-</div>
-
-<!-- HUD（dom-overlay 根節點）-->
+<!-- HUD overlay -->
 <div id="hud">
-
   <div id="top-bar">
     <span id="top-title">ADHD 同調呼吸</span>
-    <span id="top-status">掃描平面中…</span>
+    <span id="top-status">將手機對準桌面掃描…</span>
   </div>
 
   <div id="vbar">
@@ -166,7 +141,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 
   <div id="scan">
     <div class="s-ring"></div>
-    <p>將手機對準桌面，慢慢左右移動</p>
+    <div id="scan-txt">偵測到平面後點擊放置</div>
   </div>
 
   <div id="breath">
@@ -188,22 +163,100 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
     <div class="tip">同調呼吸 — 吸氣 5 秒 · 吐氣 6 秒，共 5 輪</div>
   </div>
 
-  <button id="x-btn" onclick="exitAR()">✕</button>
-
+  <button id="x-btn" onclick="window.location.reload()">✕</button>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- A-Frame 場景（8th Wall SLAM）
+     架構參考 bronson113/capabilities:
+     - xrweb: 啟動 8th Wall SLAM，allowedDevices:any 支援桌機模擬
+     - ground: 不可見的大平面，接收 raycaster click，取得落點座標
+     - breath-ball: 自訂 A-Frame component，管理球體動畫
+-->
+<a-scene
+  breath-ball-scene
+  xrextras-loading
+  xrextras-runtime-error
+  renderer="colorManagement:true"
+  xrweb="allowedDevices:any;">
+
+  <a-camera id="camera"
+    position="0 8 8"
+    raycaster="objects:.cantap"
+    cursor="fuse:false;rayOrigin:mouse;">
+  </a-camera>
+
+  <!-- 主光源 -->
+  <a-entity
+    light="type:directional;intensity:1.0;castShadow:true;
+           shadowMapHeight:1024;shadowMapWidth:1024;
+           shadowCameraTop:10;shadowCameraBottom:-10;
+           shadowCameraRight:10;shadowCameraLeft:-10;"
+    position="2 6 3">
+  </a-entity>
+  <a-light type="ambient" intensity="0.6"></a-light>
+  <a-light type="hemisphere" color="#88FFEE" groundColor="#0A3030" intensity="0.4"></a-light>
+
+  <!-- 地面接收平面（隱形）：點擊此平面觸發放置 -->
+  <a-box id="ground" class="cantap"
+    scale="1000 0.01 1000"
+    position="0 -0.005 0"
+    material="shader:shadow;transparent:true;opacity:0.0"
+    shadow>
+  </a-box>
+
+  <!-- 呼吸球 entity（初始隱藏，點擊地面後移到點擊位置並顯示）-->
+  <a-entity id="ball-root" visible="false" position="0 0 0">
+
+    <!-- 外球：湖水綠，高光用 canvas texture -->
+    <a-entity id="ball-outer"
+      geometry="primitive:sphere;radius:0.12;segmentsWidth:48;segmentsHeight:48"
+      material="color:#12A08C;emissive:#0A4A3C;emissiveIntensity:0.35;
+                metalness:0.12;roughness:0.14;opacity:0.92;transparent:true;"
+      shadow="cast:true;receive:false">
+    </a-entity>
+
+    <!-- 內核：發光核心 -->
+    <a-entity id="ball-core"
+      geometry="primitive:sphere;radius:0.064;segmentsWidth:32;segmentsHeight:32"
+      material="color:#5DE5CE;emissive:#17C9AF;emissiveIntensity:1.1;
+                opacity:0.50;transparent:true;roughness:0;metalness:0;">
+    </a-entity>
+
+    <!-- 高光：左上扁橢球（縮在外球內，不凸出）-->
+    <a-entity id="ball-spec"
+      geometry="primitive:sphere;radius:0.042;segmentsWidth:12;segmentsHeight:12"
+      material="color:#CCF5EE;opacity:0.55;transparent:true;"
+      scale="1 0.55 0.45"
+      position="-0.04 0.065 0.082">
+    </a-entity>
+
+    <!-- 光暈：BackSide 比外球略大 -->
+    <a-entity id="ball-glow"
+      geometry="primitive:sphere;radius:0.132;segmentsWidth:16;segmentsHeight:16"
+      material="color:#17C9AF;opacity:0.055;transparent:true;side:back;">
+    </a-entity>
+
+    <!-- 地面陰影環 -->
+    <a-entity id="ball-shadow"
+      geometry="primitive:circle;radius:0.11;segments:32"
+      material="color:#000000;opacity:0.18;transparent:true;"
+      rotation="-90 0 0"
+      position="0 -0.121 0">
+    </a-entity>
+
+  </a-entity>
+
+</a-scene>
+
 <script>
 /* ══════════════════════════════════════════════════
-   AR 呼吸球 v4
-   關鍵架構：
-   1. dom-overlay 必須保留（immersive-ar 中唯一能顯示 DOM 的方式）
-   2. HUD 根節點 pointer-events:none，空白處觸控穿透
-   3. 按鈕列和退出鈕個別 pointer-events:auto
-   4. 放置用 XR controller select 事件（非 canvas click）
-   5. 球體用 MeshStandardMaterial（比 Physical 快）
+   AR 呼吸球 — 8th Wall A-Frame 版
+   架構：bronson113/capabilities 的 tap-place 模式
+   引擎：8th Wall SLAM（@8thwall/engine-binary CDN）
+   呼吸：同調呼吸 5s吸 / 6s吐 × 5輪 + 語音引導
    ══════════════════════════════════════════════════ */
 
+/* ── 呼吸參數 ── */
 const PHASES=[{n:'吸氣',t:5},{n:'吐氣',t:6}];
 const ROUNDS=5;
 const VS={
@@ -213,24 +266,23 @@ const VS={
   end:'練習完成，帶著這份平靜繼續你的一天。'
 };
 
-/* 狀態 */
-let scene,camera,renderer;
-let xrSession=null,refSpace=null,hitSrc=null,hitSrcRequested=false,xrCtrl=null;
-let reticle=null,ball=null;
-let placed=false,lastPose=null;
-let curS=1,tgtS=1;
+/* ── 狀態 ── */
+let placed=false;
 let running=false,rdone=0,pidx=0,sleft=0,tk=null;
 let voiceOn=true,pvox=null;
+let ballEntity=null,outerEl=null,coreEl=null;
+let tgtScale=1,curScale=0,animRAF=null;
+let sceneReady=false;
 
-/* DOM */
-const $ = id => document.getElementById(id);
-const hud=$('hud'),scan=$('scan'),status=$('top-status');
+/* ── DOM ── */
+const $=id=>document.getElementById(id);
+const status=$('top-status'),scanEl=$('scan'),scanTxt=$('scan-txt');
 const bphase=$('b-phase'),bsub=$('b-sub'),bdsp=$('breath'),dotsEl=$('dots');
 const mbtn=$('mbtn'),rbtn=$('rbtn');
 const vbar=$('vbar'),vt=$('vt');
-const synth=window.speechSynthesis;
 
-/* 語音初始化 */
+/* ── 語音 ── */
+const synth=window.speechSynthesis;
 (()=>{
   if(!synth)return;
   const pick=()=>{
@@ -270,165 +322,44 @@ function toggleVoice(){
   if(!voiceOn){synth&&synth.cancel();vbar.classList.remove('on');}
 }
 
-/* ══ startAR ══ */
-async function startAR(){
-  if(!navigator.xr){err('請使用 Android Chrome 開啟');return;}
-  const ok=await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false);
-  if(!ok){err('裝置不支援 WebXR AR');return;}
+/* ══ A-Frame 場景組件：管理 tap-place 和場景初始化 ══ */
+AFRAME.registerComponent('breath-ball-scene',{
+  init(){
+    const scene=this.el;
 
-  initThree();
+    scene.addEventListener('loaded',()=>{
+      sceneReady=true;
+      ballEntity=$('ball-root');
+      outerEl=$('ball-outer');
+      coreEl=$('ball-core');
 
-  try{
-    xrSession=await navigator.xr.requestSession('immersive-ar',{
-      requiredFeatures:['hit-test'],
-      /* dom-overlay 必須保留，否則 HUD 在 immersive 模式下不可見 */
-      optionalFeatures:['dom-overlay','light-estimation'],
-      domOverlay:{root:hud}
+      const ground=$('ground');
+      /* tap-place：點擊地面時取得 3D 落點，放置呼吸球 */
+      ground.addEventListener('click',evt=>{
+        if(running)return;
+        const pt=evt.detail.intersection.point;
+        if(!placed){
+          placeBall(pt);
+        }
+      });
+
+      status.textContent='偵測到平面後點擊放置';
     });
-  }catch(e){err('AR 啟動失敗：'+e.message);return;}
+  }
+});
 
-  $('splash').classList.add('hide');
-  hud.classList.add('on');
+/* ══ 放置球體 ══ */
+function placeBall(pt){
+  if(!ballEntity)return;
+  /* 把球移到點擊位置，y 浮高一個球半徑 */
+  ballEntity.setAttribute('position',{x:pt.x, y:pt.y+0.12, z:pt.z});
+  ballEntity.setAttribute('visible',true);
+  placed=true;
+  curScale=0; tgtScale=1;
+  ballEntity.setAttribute('scale','0 0 0');
+  animateBall();
 
-  renderer.xr.setReferenceSpaceType('local');
-  await renderer.xr.setSession(xrSession);
-  xrSession.addEventListener('end',onEnd);
-
-  refSpace=await xrSession.requestReferenceSpace('local');
-  /* hitTestSource 改在每幀的 frame() 裡面延遲初始化（Three.js 官方範例做法）
-     避免 session 建立時序問題導致 hit test 靜默失敗 */
-
-  /* XR controller select = 手機點擊 AR 畫面的空白區域 */
-  xrCtrl=renderer.xr.getController(0);
-  xrCtrl.addEventListener('select',onSel);
-  scene.add(xrCtrl);
-
-  renderer.setAnimationLoop(frame);
-}
-
-function err(msg){
-  $('err').textContent=msg;$('err').style.display='block';
-  $('go-btn').style.display='none';
-}
-
-/* ══ Three.js ══ */
-function initThree(){
-  scene=new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff,1.1));
-  const d=new THREE.DirectionalLight(0xffffff,1.4);d.position.set(2,6,3);scene.add(d);
-  const f=new THREE.DirectionalLight(0x88FFEE,.5);f.position.set(-3,2,-2);scene.add(f);
-
-  camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.01,20);
-
-  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-  renderer.setSize(innerWidth,innerHeight);
-  renderer.xr.enabled=true;
-  renderer.outputEncoding=THREE.sRGBEncoding;
-  /* canvas z-index 低於 HUD */
-  renderer.domElement.style.cssText='position:fixed;top:0;left:0;z-index:1;';
-  document.body.appendChild(renderer.domElement);
-
-  /* reticle */
-  const rg=new THREE.RingGeometry(.05,.08,32);
-  rg.rotateX(-Math.PI/2);
-  reticle=new THREE.Mesh(rg,new THREE.MeshBasicMaterial(
-    {color:0x17C9AF,side:THREE.DoubleSide,transparent:true,opacity:.85}));
-  reticle.matrixAutoUpdate=false;
-  reticle.visible=false;
-  scene.add(reticle);
-
-  makeBall();
-
-  window.addEventListener('resize',()=>{
-    camera.aspect=innerWidth/innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth,innerHeight);
-  });
-}
-
-function makeBall(){
-  if(ball){scene.remove(ball);ball=null;}
-  const g=new THREE.Group();
-
-  /* ── 用 Canvas 貼圖畫高光，完全不產生 3D 凸出 ── */
-  const cvs=document.createElement('canvas');
-  cvs.width=cvs.height=512;
-  const ctx=cvs.getContext('2d');
-
-  /* 底色：深湖水綠 */
-  const bg=ctx.createRadialGradient(256,256,10,256,256,256);
-  bg.addColorStop(0,'#1ED4B8');
-  bg.addColorStop(.5,'#0F9080');
-  bg.addColorStop(1,'#074A40');
-  ctx.fillStyle=bg;
-  ctx.fillRect(0,0,512,512);
-
-  /* 左上高光橢圓 */
-  const hl=ctx.createRadialGradient(155,145,0,155,145,130);
-  hl.addColorStop(0,'rgba(210,255,248,0.72)');
-  hl.addColorStop(.45,'rgba(180,245,235,0.35)');
-  hl.addColorStop(1,'rgba(180,245,235,0)');
-  ctx.save();
-  ctx.scale(1,.65);
-  ctx.fillStyle=hl;
-  ctx.beginPath();
-  ctx.arc(155,145/0.65,130,0,Math.PI*2);
-  ctx.fill();
-  ctx.restore();
-
-  /* 右下反光 */
-  const rl=ctx.createRadialGradient(340,340,0,340,340,80);
-  rl.addColorStop(0,'rgba(23,201,175,0.25)');
-  rl.addColorStop(1,'rgba(23,201,175,0)');
-  ctx.fillStyle=rl;
-  ctx.beginPath();ctx.arc(340,340,80,0,Math.PI*2);ctx.fill();
-
-  const tex=new THREE.CanvasTexture(cvs);
-
-  /* 外球：套貼圖 */
-  const om=new THREE.MeshStandardMaterial({
-    map:tex,
-    emissive:new THREE.Color(0x0A4A3C),emissiveIntensity:.35,
-    metalness:.10,roughness:.15,
-    transparent:true,opacity:.92});
-  const ob=new THREE.Mesh(new THREE.SphereGeometry(.10,48,48),om);
-  ob.name='outer';g.add(ob);
-
-  /* 內核發光 */
-  const cm=new THREE.MeshStandardMaterial({
-    color:0x5DE5CE,emissive:0x17C9AF,emissiveIntensity:1.1,
-    transparent:true,opacity:.48,roughness:0,metalness:0});
-  const cb=new THREE.Mesh(new THREE.SphereGeometry(.050,32,32),cm);
-  cb.name='core';g.add(cb);
-
-  /* 外發光殼（BackSide，比外球略大，產生邊緣光暈）*/
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(.110,16,16),
-    new THREE.MeshBasicMaterial({
-      color:0x17C9AF,transparent:true,opacity:.05,side:THREE.BackSide})));
-
-  /* 地面陰影 */
-  const sg=new THREE.CircleGeometry(.09,32);sg.rotateX(-Math.PI/2);
-  const sh=new THREE.Mesh(sg,
-    new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.18}));
-  sh.position.y=-.101;g.add(sh);
-
-  g.visible=false;scene.add(g);ball=g;
-}
-
-/* ══ XR select 事件（空白處點擊）══ */
-function onSel(){
-  if(!placed&&lastPose) place();
-}
-
-function place(){
-  const p=new THREE.Vector3(),q=new THREE.Quaternion();
-  new THREE.Matrix4().fromArray(lastPose.transform.matrix).decompose(p,q,new THREE.Vector3());
-  ball.position.copy(p);
-  ball.position.y+=.10;
-  ball.visible=true;placed=true;
-  curS=0;tgtS=1;ball.scale.setScalar(0);
-  scan.classList.add('hide');
+  scanEl.classList.add('hide');
   mbtn.style.display=rbtn.style.display='block';
   status.textContent='點擊「開始呼吸」';
   buildDots();
@@ -436,58 +367,43 @@ function place(){
 
 function resetBall(){
   if(running)stopBreath();
-  placed=false;lastPose=null;ball.visible=false;
+  placed=false;
+  if(ballEntity)ballEntity.setAttribute('visible',false);
   mbtn.style.display=rbtn.style.display='none';
   bdsp.classList.remove('on');dotsEl.classList.remove('on');
-  scan.classList.remove('hide');
-  status.textContent='掃描平面中…';
-  bphase.textContent='—';bsub.textContent='';tgtS=1;
+  scanEl.classList.remove('hide');
+  status.textContent='將手機對準桌面掃描…';
+  bphase.textContent='—';bsub.textContent='';
+  tgtScale=1;
 }
 
-/* ══ XR 每幀 ══ */
-function frame(t,xrf){
-  if(!xrf)return;
-
-  /* ── hit test source 延遲初始化（官方 Three.js 範例做法）──
-     在 session 內的第一幀才申請，確保時序正確             */
-  if(!hitSrcRequested){
-    hitSrcRequested=true;
-    xrSession.requestReferenceSpace('viewer').then(vs=>{
-      xrSession.requestHitTestSource({space:vs}).then(src=>{
-        hitSrc=src;
-      }).catch(e=>console.warn('hitTestSource 失敗:',e));
-    });
-    xrSession.addEventListener('end',()=>{
-      hitSrcRequested=false; hitSrc=null;
-    });
-  }
-
-  if(hitSrc&&!placed){
-    const hits=xrf.getHitTestResults(hitSrc);
-    if(hits.length){
-      lastPose=hits[0].getPose(refSpace);
-      reticle.visible=true;
-      reticle.matrix.fromArray(lastPose.transform.matrix);
-      status.textContent='偵測到平面，點擊放置';
-    }else{
-      reticle.visible=false;lastPose=null;
-      status.textContent='掃描平面中…';
+/* ══ 球體縮放動畫（rAF 插值）══ */
+function animateBall(){
+  cancelAnimationFrame(animRAF);
+  function tick(){
+    const spd=running?.015:.10;
+    curScale+=(tgtScale-curScale)*spd;
+    if(Math.abs(curScale-tgtScale)<.001)curScale=tgtScale;
+    if(ballEntity&&ballEntity.getAttribute('visible')){
+      const s=curScale;
+      ballEntity.setAttribute('scale',`${s} ${s} ${s}`);
     }
+    /* 核心脈動 */
+    if(coreEl){
+      const pulse=0.7+0.4*Math.sin(Date.now()*.0012);
+      coreEl.setAttribute('material','emissiveIntensity',pulse);
+    }
+    /* 自轉 */
+    if(outerEl){
+      const r=outerEl.getAttribute('rotation')||{x:0,y:0,z:0};
+      outerEl.setAttribute('rotation',{x:r.x,y:(r.y+0.2)%360,z:r.z});
+    }
+    animRAF=requestAnimationFrame(tick);
   }
-
-  if(ball&&ball.visible){
-    const spd=running?.018:.09;
-    curS+=(tgtS-curS)*spd;
-    ball.scale.setScalar(curS);
-    const core=ball.getObjectByName('core');
-    if(core)core.material.emissiveIntensity=.7+.4*Math.sin(t*.001*1.2);
-    ball.rotation.y+=.003;
-  }
-
-  renderer.render(scene,camera);
+  tick();
 }
 
-/* ══ 呼吸 ══ */
+/* ══ 呼吸邏輯 ══ */
 function buildDots(){
   dotsEl.innerHTML='';
   for(let i=0;i<ROUNDS;i++){
@@ -507,70 +423,60 @@ function mainAction(){running?stopBreath():startBreath();}
 function startBreath(){
   running=true;rdone=0;pidx=0;
   mbtn.textContent='停止';rbtn.style.display='none';
-  bdsp.classList.add('on');dotsEl.classList.add('on');updDots();
+  bdsp.classList.add('on');dotsEl.classList.add('on');
+  updDots();
   seq(VS.intro,()=>{if(running)nxt();});
 }
 function stopBreath(){
-  running=false;synth&&synth.cancel();vbar.classList.remove('on');clearInterval(tk);
+  running=false;synth&&synth.cancel();vbar.classList.remove('on');
+  clearInterval(tk);
   mbtn.textContent='開始呼吸';rbtn.style.display='block';
   bphase.textContent='已暫停';bsub.textContent='按開始繼續';
-  status.textContent='已暫停';tgtS=1;
+  status.textContent='已暫停';tgtScale=1;
 }
 function nxt(){
   if(!running)return;
   if(pidx>=PHASES.length){
     pidx=0;rdone++;updDots();
-    if(rdone>=ROUNDS){done();return;}
+    if(rdone>=ROUNDS){doneFn();return;}
     const m=VS.mid[rdone];
-    if(m&&voiceOn){speak(m,()=>{if(running)ph();});return;}
+    if(m&&voiceOn){speak(m,()=>{if(running)phFn();});return;}
   }
-  ph();
+  phFn();
 }
-function ph(){
+function phFn(){
   if(!running)return;
   const p=PHASES[pidx];sleft=p.t;
   bphase.textContent=p.n;
   bsub.textContent=p.n==='吸氣'?'用鼻子緩緩吸入':'用嘴慢慢吐出';
-  tgtS=p.n==='吸氣'?1.55:.70;
-  const ob=ball&&ball.getObjectByName('outer');
-  if(ob){
-    ob.material.color.setHex(p.n==='吸氣'?0x17C9AF:0x0D7A6B);
-    ob.material.emissive.setHex(p.n==='吸氣'?0x0D7A6B:0x042820);
-    ob.material.emissiveIntensity=p.n==='吸氣'?.5:.25;
+  tgtScale=p.n==='吸氣'?1.55:.68;
+
+  /* 外球顏色切換 */
+  if(outerEl){
+    const inhale=p.n==='吸氣';
+    outerEl.setAttribute('material',{
+      color: inhale?'#17C9AF':'#0D7A6B',
+      emissive: inhale?'#0D7A6B':'#042820',
+      emissiveIntensity: inhale?.50:.22
+    });
   }
+
   const w=VS.ph[p.n];if(w)speak(w);
   clearInterval(tk);
-  tk=setInterval(()=>{sleft--;if(sleft<=0){clearInterval(tk);pidx++;setTimeout(()=>{if(running)nxt();},100);}},1000);
+  tk=setInterval(()=>{
+    sleft--;
+    if(sleft<=0){clearInterval(tk);pidx++;setTimeout(()=>{if(running)nxt();},100);}
+  },1000);
 }
-function done(){
+function doneFn(){
   running=false;clearInterval(tk);
   mbtn.textContent='再來一次';rbtn.style.display='block';
   bphase.textContent='完成';bsub.textContent='很棒，保持這份平靜';
-  status.textContent='練習完成';tgtS=1.08;
+  status.textContent='練習完成';tgtScale=1.08;
   for(let i=0;i<ROUNDS;i++){const d=$('rd'+i);if(d)d.className='rd done';}
   if(voiceOn)setTimeout(()=>speak(VS.end),600);
-  setTimeout(()=>{if(!running)tgtS=1;},2200);
+  setTimeout(()=>{if(!running)tgtScale=1;},2200);
 }
-
-/* ══ 退出 ══ */
-function exitAR(){xrSession?xrSession.end():onEnd();}
-function onEnd(){
-  running=false;synth&&synth.cancel();
-  renderer&&(renderer.setAnimationLoop(null),renderer.domElement?.remove());
-  hud.classList.remove('on');
-  $('splash').classList.remove('hide');
-  placed=false;lastPose=null;hitSrc=null;hitSrcRequested=false;
-  xrSession=null;xrCtrl=null;
-}
-
-/* 啟動檢查 */
-window.addEventListener('DOMContentLoaded',()=>{
-  if(!navigator.xr){
-    $('go-btn').textContent='⚠ 需要 Android Chrome';
-    $('err').style.display='block';
-    $('err').textContent='請用 Android Chrome 開啟此頁面';
-  }
-});
 </script>
 </body>
 </html>
