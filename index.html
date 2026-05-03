@@ -189,7 +189,7 @@ body{
 
     <!-- 外球 -->
     <a-entity id="ball-outer"
-      geometry="primitive:sphere;radius:0.35;segmentsWidth:48;segmentsHeight:48"
+      geometry="primitive:sphere;radius:1.5;segmentsWidth:48;segmentsHeight:48"
       material="color:#12A08C;emissive:#0A4A3C;emissiveIntensity:0.4;
                 metalness:0.12;roughness:0.14;opacity:0.92;transparent:true;"
       shadow="cast:true;receive:false">
@@ -197,31 +197,31 @@ body{
 
     <!-- 內核發光 -->
     <a-entity id="ball-core"
-      geometry="primitive:sphere;radius:0.19;segmentsWidth:32;segmentsHeight:32"
+      geometry="primitive:sphere;radius:0.82;segmentsWidth:32;segmentsHeight:32"
       material="color:#5DE5CE;emissive:#17C9AF;emissiveIntensity:1.1;
                 opacity:0.50;transparent:true;roughness:0;metalness:0;">
     </a-entity>
 
     <!-- 高光（縮在外球內，scale 壓扁成橢圓不凸出）-->
     <a-entity id="ball-spec"
-      geometry="primitive:sphere;radius:0.10;segmentsWidth:12;segmentsHeight:12"
+      geometry="primitive:sphere;radius:0.43;segmentsWidth:12;segmentsHeight:12"
       material="color:#CCF5EE;opacity:0.50;transparent:true;"
       scale="1.1 0.55 0.45"
-      position="-0.10 0.17 0.22">
+      position="-0.43 0.73 0.95">
     </a-entity>
 
     <!-- 光暈外殼 -->
     <a-entity id="ball-glow"
-      geometry="primitive:sphere;radius:0.39;segmentsWidth:16;segmentsHeight:16"
+      geometry="primitive:sphere;radius:1.65;segmentsWidth:16;segmentsHeight:16"
       material="color:#17C9AF;opacity:0.055;transparent:true;side:back;">
     </a-entity>
 
     <!-- 陰影環 -->
     <a-entity id="ball-shadow"
-      geometry="primitive:circle;radius:0.30;segments:32"
+      geometry="primitive:circle;radius:1.3;segments:32"
       material="color:#000000;opacity:0.15;transparent:true;"
       rotation="-90 0 0"
-      position="0 -0.352 0">
+      position="0 -1.51 0">
     </a-entity>
 
   </a-entity>
@@ -345,7 +345,7 @@ AFRAME.registerComponent('breath-ball-scene', {
 ────────────────────────────── */
 function placeBall(pt) {
   if (!ballEntity) return;
-  ballEntity.setAttribute('position', {x: pt.x, y: pt.y + 0.35, z: pt.z});
+  ballEntity.setAttribute('position', {x: pt.x, y: pt.y + 1.5, z: pt.z});
   ballEntity.setAttribute('visible', true);
   ballEntity.setAttribute('scale', '0 0 0');
   placed     = true;
@@ -376,32 +376,35 @@ function resetBall() {
 
 /* ──────────────────────────────
    球體動畫迴圈（rAF）
+   直接操作 object3D.scale 避免 setAttribute 解析延遲
 ────────────────────────────── */
 function animateBall() {
   cancelAnimationFrame(animRAF);
 
   function tick() {
-    /* 縮放插值：非呼吸時快速，呼吸時依時長平滑 */
-    const spd = running ? 0.025 : 0.10;
+    /* 縮放插值 */
+    const spd = running ? 0.04 : 0.12;
     curScale += (tgtScale - curScale) * spd;
-    if (Math.abs(curScale - tgtScale) < 0.001) curScale = tgtScale;
+    if (Math.abs(curScale - tgtScale) < 0.002) curScale = tgtScale;
 
-    if (ballEntity && ballEntity.getAttribute('visible')) {
-      ballEntity.setAttribute('scale', `${curScale} ${curScale} ${curScale}`);
+    /* 直接設定 Three.js object3D scale（最可靠的方式）*/
+    if (ballEntity && ballEntity.object3D) {
+      ballEntity.object3D.scale.setScalar(curScale);
     }
 
     /* 核心脈動：頻率隨呼吸相位不同 */
-    if (coreEl) {
-      const freq  = running ? (tgtScale > 1 ? 1.8 : 0.7) : 1.0;
+    if (coreEl && coreEl.object3D) {
+      const freq  = running ? (tgtScale > 1 ? 2.0 : 0.6) : 1.0;
       const pulse = 0.6 + 0.55 * Math.sin(Date.now() * 0.001 * freq);
-      coreEl.setAttribute('material', 'emissiveIntensity', pulse);
+      if (coreEl.components && coreEl.components.material) {
+        coreEl.components.material.material.emissiveIntensity = pulse;
+      }
     }
 
-    /* 自轉：吸氣順時針、吐氣逆時針 */
-    if (outerEl) {
-      const r      = outerEl.getAttribute('rotation') || {x:0, y:0, z:0};
-      const rotSpd = running ? (tgtScale > 1 ? 0.35 : -0.15) : 0.20;
-      outerEl.setAttribute('rotation', {x: r.x, y: (r.y + rotSpd + 360) % 360, z: r.z});
+    /* 外球自轉：吸氣順時針、吐氣逆時針 */
+    if (outerEl && outerEl.object3D) {
+      const rotSpd = running ? (tgtScale > 1 ? 0.5 : -0.2) : 0.3;
+      outerEl.object3D.rotation.y += THREE.MathUtils.degToRad(rotSpd);
     }
 
     animRAF = requestAnimationFrame(tick);
@@ -474,8 +477,8 @@ function phFn() {
   bphase.textContent = p.n;
   bsub.textContent   = p.n === '吸氣' ? '用鼻子緩緩吸入' : '用嘴慢慢吐出';
 
-  /* 球體縮放與語音同時觸發 */
-  tgtScale = p.n === '吸氣' ? 1.55 : 0.68;
+  /* 球體縮放與語音同時觸發：吸氣脹大到 2 倍，吐氣縮到 0.5 倍 */
+  tgtScale = p.n === '吸氣' ? 2.0 : 0.5;
 
   /* 外球顏色切換 */
   if (outerEl) {
