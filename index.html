@@ -209,7 +209,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
     <!-- 外球：湖水綠，高光用 canvas texture -->
     <a-entity id="ball-outer"
-      geometry="primitive:sphere;radius:0.12;segmentsWidth:48;segmentsHeight:48"
+      geometry="primitive:sphere;radius:0.35;segmentsWidth:48;segmentsHeight:48"
       material="color:#12A08C;emissive:#0A4A3C;emissiveIntensity:0.35;
                 metalness:0.12;roughness:0.14;opacity:0.92;transparent:true;"
       shadow="cast:true;receive:false">
@@ -217,31 +217,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
     <!-- 內核：發光核心 -->
     <a-entity id="ball-core"
-      geometry="primitive:sphere;radius:0.064;segmentsWidth:32;segmentsHeight:32"
+      geometry="primitive:sphere;radius:0.190;segmentsWidth:32;segmentsHeight:32"
       material="color:#5DE5CE;emissive:#17C9AF;emissiveIntensity:1.1;
                 opacity:0.50;transparent:true;roughness:0;metalness:0;">
     </a-entity>
 
     <!-- 高光：左上扁橢球（縮在外球內，不凸出）-->
     <a-entity id="ball-spec"
-      geometry="primitive:sphere;radius:0.042;segmentsWidth:12;segmentsHeight:12"
+      geometry="primitive:sphere;radius:0.122;segmentsWidth:12;segmentsHeight:12"
       material="color:#CCF5EE;opacity:0.55;transparent:true;"
       scale="1 0.55 0.45"
-      position="-0.04 0.065 0.082">
+      position="-0.115 0.190 0.240">
     </a-entity>
 
     <!-- 光暈：BackSide 比外球略大 -->
     <a-entity id="ball-glow"
-      geometry="primitive:sphere;radius:0.132;segmentsWidth:16;segmentsHeight:16"
+      geometry="primitive:sphere;radius:0.385;segmentsWidth:16;segmentsHeight:16"
       material="color:#17C9AF;opacity:0.055;transparent:true;side:back;">
     </a-entity>
 
     <!-- 地面陰影環 -->
     <a-entity id="ball-shadow"
-      geometry="primitive:circle;radius:0.11;segments:32"
+      geometry="primitive:circle;radius:0.30;segments:32"
       material="color:#000000;opacity:0.18;transparent:true;"
       rotation="-90 0 0"
-      position="0 -0.121 0">
+      position="0 -0.351 0">
     </a-entity>
 
   </a-entity>
@@ -352,7 +352,7 @@ AFRAME.registerComponent('breath-ball-scene',{
 function placeBall(pt){
   if(!ballEntity)return;
   /* 把球移到點擊位置，y 浮高一個球半徑 */
-  ballEntity.setAttribute('position',{x:pt.x, y:pt.y+0.12, z:pt.z});
+  ballEntity.setAttribute('position',{x:pt.x, y:pt.y+0.35, z:pt.z});
   ballEntity.setAttribute('visible',true);
   placed=true;
   curScale=0; tgtScale=1;
@@ -378,26 +378,51 @@ function resetBall(){
 }
 
 /* ══ 球體縮放動畫（rAF 插值）══ */
+let breathDuration = 5000; // 當前相位時長（ms），用來計算插值速度
 function animateBall(){
   cancelAnimationFrame(animRAF);
+  let phaseStart = Date.now();
+
   function tick(){
-    const spd=running?.015:.10;
-    curScale+=(tgtScale-curScale)*spd;
-    if(Math.abs(curScale-tgtScale)<.001)curScale=tgtScale;
-    if(ballEntity&&ballEntity.getAttribute('visible')){
-      const s=curScale;
-      ballEntity.setAttribute('scale',`${s} ${s} ${s}`);
+    const elapsed = Date.now() - phaseStart;
+
+    if(running){
+      // 依呼吸時長精確插值：在 breathDuration ms 內從 curScale 平滑到 tgtScale
+      const progress = Math.min(elapsed / breathDuration, 1);
+      // ease-in-out cubic
+      const ease = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      curScale = curScale + (tgtScale - curScale) * (elapsed < breathDuration ? ease * 0.06 : 0.12);
+    } else {
+      // 非呼吸時，快速回到目標
+      curScale += (tgtScale - curScale) * 0.10;
     }
-    /* 核心脈動 */
+
+    if(Math.abs(curScale - tgtScale) < 0.001) curScale = tgtScale;
+
+    if(ballEntity && ballEntity.getAttribute('visible')){
+      ballEntity.setAttribute('scale', `${curScale} ${curScale} ${curScale}`);
+    }
+
+    // 核心脈動：吸氣時加速，吐氣時減速
     if(coreEl){
-      const pulse=0.7+0.4*Math.sin(Date.now()*.0012);
-      coreEl.setAttribute('material','emissiveIntensity',pulse);
+      const freq = running ? (tgtScale > 1 ? 1.8 : 0.7) : 1.0;
+      const pulse = 0.6 + 0.55 * Math.sin(Date.now() * 0.001 * freq);
+      coreEl.setAttribute('material', 'emissiveIntensity', pulse);
     }
-    /* 自轉 */
+
+    // 自轉：吸氣時順時針加速，吐氣時逆時針減速
     if(outerEl){
-      const r=outerEl.getAttribute('rotation')||{x:0,y:0,z:0};
-      outerEl.setAttribute('rotation',{x:r.x,y:(r.y+0.2)%360,z:r.z});
+      const r = outerEl.getAttribute('rotation') || {x:0,y:0,z:0};
+      const rotSpd = running ? (tgtScale > 1 ? 0.35 : -0.15) : 0.20;
+      outerEl.setAttribute('rotation', {x:r.x, y:(r.y + rotSpd + 360) % 360, z:r.z});
     }
+
+    animRAF = requestAnimationFrame(tick);
+  }
+  tick();
+}
     animRAF=requestAnimationFrame(tick);
   }
   tick();
@@ -449,24 +474,36 @@ function phFn(){
   const p=PHASES[pidx];sleft=p.t;
   bphase.textContent=p.n;
   bsub.textContent=p.n==='吸氣'?'用鼻子緩緩吸入':'用嘴慢慢吐出';
-  tgtScale=p.n==='吸氣'?1.55:.68;
 
-  /* 外球顏色切換 */
+  // 設定呼吸時長給動畫使用
+  breathDuration = p.t * 1000;
+
+  // 球體縮放：吸氣脹大，吐氣縮小 — 與語音同時觸發
+  tgtScale = p.n==='吸氣' ? 1.55 : 0.68;
+
+  // 外球顏色同時切換
   if(outerEl){
-    const inhale=p.n==='吸氣';
+    const inhale = p.n==='吸氣';
     outerEl.setAttribute('material',{
-      color: inhale?'#17C9AF':'#0D7A6B',
-      emissive: inhale?'#0D7A6B':'#042820',
-      emissiveIntensity: inhale?.50:.22
+      color:    inhale ? '#17C9AF' : '#0D7A6B',
+      emissive: inhale ? '#0D7A6B' : '#042820',
+      emissiveIntensity: inhale ? 0.55 : 0.22
     });
   }
 
-  const w=VS.ph[p.n];if(w)speak(w);
+  // 語音和縮放同時啟動（不用 callback 等語音結束）
+  const w = VS.ph[p.n]; if(w) speak(w);
+
+  // 計時器：時間到才切換下一相位
   clearInterval(tk);
-  tk=setInterval(()=>{
+  tk = setInterval(()=>{
     sleft--;
-    if(sleft<=0){clearInterval(tk);pidx++;setTimeout(()=>{if(running)nxt();},100);}
-  },1000);
+    if(sleft <= 0){
+      clearInterval(tk);
+      pidx++;
+      setTimeout(()=>{ if(running) nxt(); }, 100);
+    }
+  }, 1000);
 }
 function doneFn(){
   running=false;clearInterval(tk);
